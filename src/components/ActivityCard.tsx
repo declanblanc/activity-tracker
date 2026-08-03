@@ -108,15 +108,21 @@ function CardShell({
   const interactive = !activity.archived
 
   return (
+    // The swiping surface must be **opaque**, and `panel` is what makes it so. `activity-tint`
+    // cannot go here: it sets `background-color` too, so it would replace the panel's fill with
+    // a translucent one and the red delete underlay would show through a card that is merely
+    // running. The tint goes on the inner wrapper instead, which is why the padding does too —
+    // it has to cover the whole card for the tint to.
     <SwipeToDelete
       onDelete={onDelete}
-      className={`panel p-4 ${tinted ? 'activity-tint activity-rail' : ''} ${
-        activity.archived ? 'opacity-50' : ''
-      }`}
+      className={`panel ${activity.archived ? 'opacity-50' : ''}`}
     >
       {/* The activity's colour reaches the card through one custom property, and only as a
           tint, a rail and a dot — never under text. See `activity-tint` in index.css. */}
-      <div style={{ '--activity': activity.color } as CSSProperties}>
+      <div
+        style={{ '--activity': activity.color } as CSSProperties}
+        className={`rounded-2xl p-4 ${tinted ? 'activity-tint activity-rail' : ''}`}
+      >
         <div className="flex items-start gap-3">
           {/* The title block is the affordance for the detail sheet, rather than the whole
               card — a card-wide click would fight every square in the grid below. */}

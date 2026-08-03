@@ -50,7 +50,9 @@ export default function Log() {
   // Entries belong to timed activities only, so this screen is about them. A check-off has no
   // interval to draw or list; its history is the grid on the Activities screen.
   const timed = activities.filter((activity) => activity.measure === 'duration')
-  const anyTimed = timed.some((activity) => !activity.archived)
+  // Archived ones count: their recorded stretches are still history this screen should list, and
+  // the alternative message would tell an owner that nothing of theirs is timed when something is.
+  const anyTimed = timed.length > 0
 
   const byId = new Map(activities.map((activity) => [activity.id, activity]))
   // Entries arrive oldest first, so the last write per activity wins. A stopped block has

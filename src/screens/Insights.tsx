@@ -153,19 +153,24 @@ export default function Insights() {
         </h1>
         {focus && (
           <>
-            {/* Retroactive logging lives here because this is the screen where a gap is
-                seen — a goal short by an hour is the hour you forgot to start.
+            {/* Retroactive logging lives here because this is the screen where a gap is seen —
+                a goal short by an hour is the hour you forgot to start.
 
-                Icon-only, unlike the Log's `+ Add`: this header already carries a name
-                and a way out of it, and the word "Add" cost enough width to truncate the
-                activity's name to six characters on a phone. */}
-            <IconButton
-              label="Add an entry"
-              variant="primary"
-              onClick={() => setDraft({ ...blankDraft(now), activityId: focus.id })}
-            >
-              <Plus className="size-4" aria-hidden />
-            </IconButton>
+                Timed activities only: a check-off has no interval to write, and its equivalent
+                gesture is ticking a past square on the year grid below.
+
+                Icon-only, unlike the Log's `+ Add`: this header already carries a name and a way
+                out of it, and the word "Add" cost enough width to truncate the activity's name to
+                six characters on a phone. */}
+            {focus.measure === 'duration' && (
+              <IconButton
+                label="Add an entry"
+                variant="primary"
+                onClick={() => setDraft({ ...blankDraft(now), activityId: focus.id })}
+              >
+                <Plus className="size-4" aria-hidden />
+              </IconButton>
+            )}
             <Link
               to="/insights"
               onClick={() => setDraft(null)}
@@ -497,13 +502,20 @@ function Trend({
   const mean = data.reduce((sum, row) => sum + row.value, 0) / data.length
   /** Back from the axis unit into the amount `formatAmount` expects. */
   const unscale = (value: number) => (measure === 'duration' ? value * HOUR : value)
+  // A count average is usually fractional — four logged days over twelve weeks is 0.33 — and
+  // `formatAmount` rounds to whole days, which would print "0 days" for it. One decimal place
+  // is the smallest thing that stops the average reading as nothing.
+  const meanLabel =
+    measure === 'duration'
+      ? formatAmount('duration', unscale(mean))
+      : `${mean.toFixed(1)} ${mean === 1 ? 'day' : 'days'}`
 
   return (
     <div className="panel mt-4 p-4">
       <h2 className="flex items-baseline gap-2 text-2xs font-semibold tracking-widest text-ink-muted uppercase">
         {title} by {scale}
         <span className="font-normal tracking-normal normal-case tabular-nums">
-          avg {formatAmount(measure, unscale(mean))}
+          avg {meanLabel}
         </span>
       </h2>
       {/* The chart fills a box the layout sizes, rather than carrying a fixed pixel height of

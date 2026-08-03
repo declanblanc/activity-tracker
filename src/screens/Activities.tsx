@@ -122,9 +122,9 @@ export default function Activities() {
 
   const visible = showArchived ? activities : activities.filter((activity) => !activity.archived)
   const archivedCount = activities.filter((activity) => activity.archived).length
-  const anyTimed = activities.some(
-    (activity) => activity.measure === 'duration' && !activity.archived,
-  )
+  // Archived ones count: an activity archived at noon still tracked the morning, and the day's
+  // coverage has to account for it.
+  const anyTimed = activities.some((activity) => activity.measure === 'duration')
 
   const startedAtByActivity = new Map(
     openEntries.map((entry) => [entry.activityId, entry.startedAt]),

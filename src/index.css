@@ -145,16 +145,30 @@ html {
   }
 
   /**
-   * Partial credit: progress short of the day's own goal, or a day inside a week that hit
-   * a weekly goal. `lib/days.ts` decides which; both mean the same thing to a reader.
+   * Partial credit: progress short of the day's own goal, or a day inside a week that hit a
+   * weekly goal. `lib/days.ts` decides which; both mean the same thing to a reader.
    *
-   * 50% for the same reason `activity-tint` is 8% — and it is a different number because
-   * it answers a different question. **Nothing sits on a square**, so the constraint is
-   * not text contrast at all: below about 50% the fill sinks into the empty-square grey,
-   * and above it a partial day stops being distinguishable from a completed one.
+   * 60%, and it is a measured number rather than a taste. **Nothing sits on a square**, so
+   * the constraint is not text contrast (which is why `activity-tint` is 8% and this is
+   * not) but WCAG 1.4.11's 3:1 for a graphic that carries state.
+   *
+   * Measured over the palette, compositing each fill down to the canvas — the tinted
+   * column is a square on a *running* card, whose 8% tint lifts the grey underneath it:
+   *
+   *              partial vs empty        full vs partial
+   *   50%        2.57 – 2.97  ✗          2.18 – 2.42  ✗
+   *   60%        3.09 – 3.66  ✓          1.81 – 1.96  ✗
+   *   70%        3.63 – 4.39  ✓          1.55 – 1.64  ✗
+   *
+   * No value clears 3:1 on both pairs, and that is arithmetic rather than a bad choice:
+   * full-vs-empty spans only 5.6–7.2:1 for these pastels, and three mutually-3:1 steps
+   * need 9:1 to fit. So the pair that gets the guarantee is **partial vs empty** — "is
+   * there any credit here at all", which is the question the grid is read for. Telling
+   * partial from full leans on the per-square `aria-label` and on the run of solid squares
+   * around it, not on contrast alone.
    */
   .heat-square[data-credit='partial'] {
-    background-color: color-mix(in oklab, var(--activity) 50%, transparent);
+    background-color: color-mix(in oklab, var(--activity) 60%, transparent);
   }
 
   .heat-square[data-credit='full'] {
@@ -163,8 +177,10 @@ html {
 
   /* A coarse pointer has no hover, and on touch these would stick after a tap. */
   @media (hover: hover) {
+    /* Below `partial`'s 60%, so hovering an empty day previews the colour without looking
+       like the day has already earned credit. */
     .heat-square[data-credit='none']:hover {
-      background-color: color-mix(in oklab, var(--activity) 35%, transparent);
+      background-color: color-mix(in oklab, var(--activity) 30%, transparent);
     }
 
     .heat-square[data-credit='full']:hover {

@@ -128,14 +128,18 @@ export default function ActivityForm({
             step={counted ? 1 : 0.25}
             inputMode={counted ? 'numeric' : 'decimal'}
             aria-label={counted ? 'Days per period' : 'Hours per period'}
-            className={`${FIELD} mt-0 w-24`}
+            className={`${FIELD} mt-0 w-20`}
           />
-          <span className="text-sm text-ink-muted">{counted ? 'days per' : 'hours per'}</span>
+          {/* `shrink-0` and no wrapping: without them the unit broke onto two lines and squeezed
+              the period select down to its chevron. */}
+          <span className="shrink-0 text-sm whitespace-nowrap text-ink-muted">
+            {counted ? 'days per' : 'hours per'}
+          </span>
           <select
             value={draft.targetPeriod}
             onChange={(event) => set('targetPeriod', event.target.value as Period)}
             aria-label="Goal period"
-            className={`${FIELD} mt-0 flex-1`}
+            className={`${FIELD} mt-0 min-w-24 flex-1`}
           >
             {PERIODS.map((period) => (
               <option key={period} value={period}>
