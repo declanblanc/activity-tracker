@@ -298,17 +298,17 @@ export default function Insights() {
             now={now}
           />
 
-          {/* Both measures. For a check-off activity this is what replaces the retroactive `+`
-              in the header; for a timed one, "which days did I do any of this at all" is a
-              question the trend cannot answer. */}
-          {focus && (
+          {/* Check-offs only — see `HeatGrid`. For them it is what replaces the retroactive `+`
+              in the header, which a timed activity gets instead. A timer's history is the trend
+              above and the Today timeline, both of which can show how much. */}
+          {focus?.measure === 'count' && (
             <div className="panel mt-4 p-4">
               <h2 className="text-2xs font-semibold tracking-widest text-ink-muted uppercase">
                 Past year
               </h2>
               <div className="mt-2">
                 <HeatGrid
-                  activity={focus}
+                  color={focus.color}
                   amounts={dayAmounts(
                     focus,
                     entries,
@@ -318,6 +318,7 @@ export default function Insights() {
                   )}
                   today={dateKey(now)}
                   weeks={FOCUS_WEEKS}
+                  weeklyTarget={targetAt(focus, 'week') ?? undefined}
                 />
               </div>
             </div>

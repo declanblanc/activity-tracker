@@ -1,4 +1,4 @@
-import { BarChart3, ChevronLeft, ChevronRight, Pause, Play, Square, X } from 'lucide-react'
+import { BarChart3, ChevronLeft, ChevronRight, Pause, Play, Plus, Square, X } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { Link } from 'react-router'
 import type { Activity, DateKey } from '../data/types.ts'
@@ -137,21 +137,34 @@ export default function ActivitySheet({
         />
       </dl>
 
-      <div className="mt-6">
-        <h3 className="mb-2 text-sm font-medium text-ink-muted">Past year</h3>
-        <HeatGrid
-          activity={activity}
-          amounts={amounts}
-          today={today}
-          weeks={SHEET_WEEKS}
-          onDayActivate={activity.archived ? undefined : onDayActivate}
-        />
-        <p className="mt-2 text-2xs text-ink-muted">
-          {timed
-            ? 'Tap a day to add or correct time on it.'
-            : 'Tap any past day to fill it in or clear it.'}
-        </p>
-      </div>
+      {/* The year grid is for check-offs only — see `HeatGrid`. A timed activity gets a plain way
+          in to the entry form instead, which is what tapping a square used to be for. */}
+      {timed ? (
+        !activity.archived && (
+          <div className="mt-6">
+            <Button variant="quiet" onClick={() => onDayActivate(today)}>
+              <Plus className="size-4" aria-hidden />
+              Add time
+            </Button>
+            <p className="mt-2 text-2xs text-ink-muted">
+              For a stretch the timer missed. The Log can correct any day.
+            </p>
+          </div>
+        )
+      ) : (
+        <div className="mt-6">
+          <h3 className="mb-2 text-sm font-medium text-ink-muted">Past year</h3>
+          <HeatGrid
+            color={activity.color}
+            amounts={amounts}
+            today={today}
+            weeks={SHEET_WEEKS}
+            weeklyTarget={weeklyTarget ?? undefined}
+            onDayActivate={activity.archived ? undefined : onDayActivate}
+          />
+          <p className="mt-2 text-2xs text-ink-muted">Tap any past day to fill it in or clear it.</p>
+        </div>
+      )}
 
       <div className="mt-6">
         <Link

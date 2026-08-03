@@ -282,7 +282,9 @@ export default function Activities() {
         </EmptyState>
       )}
 
-      <div className="mt-3 grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(20rem,100%),1fr))]">
+      {/* `items-start`: a timed card carries no heat strip and so is much shorter than a check-off
+          card. Without it the grid row would stretch it to match its tallest neighbour. */}
+      <div className="mt-3 grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(20rem,100%),1fr))]">
         {visible.map((activity) => {
           const stats = summarise(activity)
           const startedAt = startedAtByActivity.get(activity.id)
@@ -291,17 +293,17 @@ export default function Activities() {
           const blockStart = blockStartedAt[activity.id] ?? startedAt
           const shared = {
             activity,
-            amounts: stats.amounts,
-            today,
             onOpen: () => setOpenId(activity.id),
             onDelete: () => void remove(activity),
-            onDayActivate: (dayKey: DateKey) => openDay(activity, dayKey),
           }
 
           return activity.measure === 'count' ? (
             <CountCard
               key={activity.id}
               {...shared}
+              amounts={stats.amounts}
+              today={today}
+              onToggleDay={(dayKey) => void toggleCompletion(activity.id, dayKey)}
               thisWeek={stats.thisWeek}
               streak={stats.streak}
               total={stats.total}

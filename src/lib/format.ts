@@ -16,11 +16,17 @@ export function formatElapsed(ms: number): string {
   return hours > 0 ? `${hours}:${parts.join(':')}` : parts.join(':')
 }
 
-/** A settled duration as `2h 5m`, where seconds would be noise. */
+/**
+ * A settled duration as `2h 5m`, where seconds would be noise.
+ *
+ * A whole number of hours drops the minutes entirely: goals are usually set at round hours, and
+ * "Goal: 4h 0m a day" is not how anyone says it.
+ */
 export function formatDuration(ms: number): string {
   const minutes = Math.max(0, Math.round(ms / MINUTE))
   const hours = Math.floor(minutes / 60)
-  return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`
+  if (hours === 0) return `${minutes}m`
+  return minutes % 60 === 0 ? `${hours}h` : `${hours}h ${minutes % 60}m`
 }
 
 /**

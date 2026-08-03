@@ -21,6 +21,16 @@ describe('formatDuration', () => {
     expect(formatDuration(45 * MINUTE)).toBe('45m')
     expect(formatDuration(2 * HOUR + 5 * MINUTE)).toBe('2h 5m')
   })
+
+  it('drops the minute field on a whole hour', () => {
+    // Goals are set at round hours, and "4h 0m a day" is not how anyone says it.
+    expect(formatDuration(4 * HOUR)).toBe('4h')
+    expect(formatDuration(HOUR)).toBe('1h')
+  })
+
+  it('still says 0m for nothing at all', () => {
+    expect(formatDuration(0)).toBe('0m')
+  })
 })
 
 describe('formatAmount', () => {

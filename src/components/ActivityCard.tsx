@@ -60,12 +60,8 @@ function useFittingWeeks(max: number) {
 
 type Shared = {
   activity: Activity
-  /** day → amount, from `dayAmounts`. */
-  amounts: Map<DateKey, number>
-  today: DateKey
   onOpen: () => void
   onDelete: () => void
-  onDayActivate: (day: DateKey) => void
 }
 
 const streakLabel = (length: number, unit: 'day' | 'week') =>
@@ -92,21 +88,26 @@ function goalSummary(
   return `${streakLabel(streak, 'day')} · ${formatAmount(activity.measure, total)} total`
 }
 
-/** The card shell: surface, identity block, and the strip. Both measures share it. */
+/**
+ * The card shell: the swipe surface, the identity block and the one control beside it.
+ *
+ * Anything below that is the measure's own business — which in practice means the check-off card's
+ * heat strip, since a timed card has nothing a grid could honestly say.
+ */
 function CardShell({
   activity,
-  amounts,
-  today,
   onOpen,
   onDelete,
-  onDayActivate,
   summary,
   tinted = false,
   action,
-}: Shared & { summary: ReactNode; tinted?: boolean; action: ReactNode }) {
-  const [strip, weeks] = useFittingWeeks(CARD_MAX_WEEKS)
-  const interactive = !activity.archived
-
+  children,
+}: Shared & {
+  summary: ReactNode
+  tinted?: boolean
+  action: ReactNode
+  children?: ReactNode
+}) {
   return (
     // The swiping surface must be **opaque**, and `panel` is what makes it so. `activity-tint`
     // cannot go here: it sets `background-color` too, so it would replace the panel's fill with
@@ -125,7 +126,7 @@ function CardShell({
       >
         <div className="flex items-start gap-3">
           {/* The title block is the affordance for the detail sheet, rather than the whole
-              card — a card-wide click would fight every square in the grid below. */}
+              card — a card-wide click would fight every square in a grid below it. */}
           <button
             type="button"
             onClick={onOpen}
@@ -156,18 +157,10 @@ function CardShell({
 
           {/* Archived activities get no controls: archiving stops the timer, and something
               off the dashboard must not start accruing again or accept a new check-off. */}
-          {interactive && action}
+          {!activity.archived && action}
         </div>
 
-        <div className="mt-3" ref={strip}>
-          <HeatGrid
-            activity={activity}
-            amounts={amounts}
-            today={today}
-            weeks={weeks}
-            onDayActivate={interactive ? onDayActivate : undefined}
-          />
-        </div>
+        {children}
       </div>
     </SwipeToDelete>
   )
@@ -178,20 +171,28 @@ function CardShell({
  * day. Backfilling a missed day is just clicking an older square.
  */
 export function CountCard({
+  amounts,
+  today,
   thisWeek,
   streak,
   total,
   onToggleToday,
+  onToggleDay,
   ...shared
 }: Shared & {
+  /** day → 1 for a logged day, from `dayAmounts`. */
+  amounts: Map<DateKey, number>
+  today: DateKey
   /** Check-offs so far this week, for a weekly goal's progress line. */
   thisWeek: number
   streak: number
   total: number
   onToggleToday: () => void
+  onToggleDay: (day: DateKey) => void
 }) {
-  const { activity, amounts, today } = shared
+  const { activity } = shared
   const doneToday = (amounts.get(today) ?? 0) > 0
+  const [strip, weeks] = useFittingWeeks(CARD_MAX_WEEKS)
 
   return (
     <CardShell
@@ -215,21 +216,35 @@ export function CountCard({
           {doneToday ? '✓' : '+'}
         </button>
       }
-    />
+    >
+      <div className="mt-3" ref={strip}>
+        <HeatGrid
+          color={activity.color}
+          amounts={amounts}
+          today={today}
+          weeks={weeks}
+          weeklyTarget={targetAt(activity, 'week') ?? undefined}
+          onDayActivate={activity.archived ? undefined : onToggleDay}
+        />
+      </div>
+    </CardShell>
   )
 }
 
 /**
- * A timed activity: start/pause and stop, with a live elapsed reading.
+ * A timed activity: start/pause and stop, with a live elapsed reading, and nothing else.
  *
- * The number on the card is its **block**: the run from the moment the timer was started to
- * the moment it is stopped, carried across any number of pauses. Pausing for lunch leaves it
- * counting on from 3h rather than resetting; stopping ends the block, so the next start begins
- * a fresh one at zero. Both write exactly the same thing, a closed entry — only the block
- * boundary tells them apart, which is why it lives in `prefs`.
+ * **No heat strip.** A contribution graph answers "on which days did this happen", which is the
+ * whole story for a check-off and a discarded one for a timer: a square is on or off, so twenty
+ * minutes and six hours would look identical. The card stays a compact row and the history goes
+ * where magnitude survives — the Today timeline, the Log, and the Insights trend. It is also why
+ * this card is shorter than a check-off card, which the grid's `items-start` allows for.
  *
- * A square on the strip opens the entry form for that day: a stretch of time cannot be
- * "ticked" the way a check-off can.
+ * The number on the card is its **block**: the run from the moment the timer was started to the
+ * moment it is stopped, carried across any number of pauses. Pausing for lunch leaves it counting
+ * on from 3h rather than resetting; stopping ends the block, so the next start begins a fresh one
+ * at zero. Both write exactly the same thing, a closed entry — only the block boundary tells them
+ * apart, which is why it lives in `prefs`.
  */
 export function DurationCard({
   startedAt,

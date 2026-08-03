@@ -16,9 +16,6 @@ import { dateKey, shiftKey, type TimeWindow } from './time.ts'
  * and no duration code path, only amounts.
  */
 
-/** How much credit a day has earned, which is all the heat grid needs to shade a square. */
-export type DayCredit = 'none' | 'partial' | 'full'
-
 /**
  * day → amount, for one activity: **1 for a logged day** when it is counted,
  * **milliseconds tracked within that local day** when it is timed. A missing key is zero.
@@ -62,41 +59,6 @@ export function dayAmounts(
       bucket.perActivity.get(activity.id) ?? 0,
     ]),
   )
-}
-
-/**
- * The bar one day has to clear on its own.
- *
- * A daily target is that bar. Anything else — a weekly or monthly target, or no target at
- * all — leaves the day with nothing of its own to hit, so any amount at all clears it. That
- * is what a filled square meant before targets existed, and it keeps a weekly habit's
- * squares honest: the week is scored by `streaks`, not by the square.
- */
-function dayGoal(activity: Activity): number {
-  return activity.targetPeriod === 'day' ? (activity.targetAmount ?? 1) : 1
-}
-
-/** Did this day clear its own bar? */
-export function dayMet(activity: Activity, amount: number): boolean {
-  return amount > 0 && amount >= dayGoal(activity)
-}
-
-/**
- * How much credit to show for one day.
- *
- * `partial` is the same visual weight for two different situations, deliberately, because
- * they mean the same thing to a reader: *some* credit, short of the day being done.
- *
- * - A timed day that made progress without reaching its daily goal — two hours of four.
- * - Any day inside a week that hit a weekly goal. The day itself was not the unit being
- *   scored, so marking it a plain miss would be a lie about a week that went well.
- *
- * `full` always means the day cleared `dayGoal`, so a solid square never overstates.
- */
-export function dayCredit(activity: Activity, amount: number, weekMet: boolean): DayCredit {
-  if (dayMet(activity, amount)) return 'full'
-  if (amount > 0 || weekMet) return 'partial'
-  return 'none'
 }
 
 /**

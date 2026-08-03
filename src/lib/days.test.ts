@@ -8,7 +8,7 @@ import {
   type Entry,
 } from '../data/types.ts'
 import { bucketTotals } from './accounting/totals.ts'
-import { dayAmounts, dayCredit, dayMet, periodAmounts } from './days.ts'
+import { dayAmounts, periodAmounts } from './days.ts'
 import { dateKey, dayWindowsIn, dayWindow, monthWindow, trailingWindows, weekWindow } from './time.ts'
 
 // Pinned to America/Los_Angeles by vite.config.ts.
@@ -178,54 +178,6 @@ describe('dayAmounts across DST', () => {
       '2026-11-02',
       '2026-11-03',
     ])
-  })
-})
-
-describe('dayMet', () => {
-  it('needs the daily target when there is one', () => {
-    const daily = activity({ targetAmount: 4 * HOUR, targetPeriod: 'day' })
-    expect(dayMet(daily, 4 * HOUR)).toBe(true)
-    expect(dayMet(daily, 3.9 * HOUR)).toBe(false)
-  })
-
-  it('accepts any amount when the target belongs to another period', () => {
-    // The week is scored by `streaks`; the square is not the unit being judged.
-    const weekly = activity({ targetAmount: 10 * HOUR, targetPeriod: 'week' })
-    expect(dayMet(weekly, 1)).toBe(true)
-    expect(dayMet(weekly, 0)).toBe(false)
-  })
-
-  it('accepts any amount when there is no target at all', () => {
-    expect(dayMet(activity({}), 1)).toBe(true)
-    expect(dayMet(activity({}), 0)).toBe(false)
-  })
-
-  it('treats a logged day as met for an every-day habit', () => {
-    const habit = activity({ measure: 'count', targetAmount: 1, targetPeriod: 'day' })
-    expect(dayMet(habit, 1)).toBe(true)
-    expect(dayMet(habit, 0)).toBe(false)
-  })
-})
-
-describe('dayCredit', () => {
-  it('gives a timed day partial credit for progress short of its goal', () => {
-    const daily = activity({ targetAmount: 4 * HOUR, targetPeriod: 'day' })
-    expect(dayCredit(daily, 4 * HOUR, false)).toBe('full')
-    expect(dayCredit(daily, 2 * HOUR, false)).toBe('partial')
-    expect(dayCredit(daily, 0, false)).toBe('none')
-  })
-
-  it('gives an unlogged day partial credit inside a week that hit its goal', () => {
-    // Marking it a plain miss would misreport a week that went well.
-    const weekly = activity({ measure: 'count', targetAmount: 3, targetPeriod: 'week' })
-    expect(dayCredit(weekly, 0, true)).toBe('partial')
-    expect(dayCredit(weekly, 0, false)).toBe('none')
-    expect(dayCredit(weekly, 1, true)).toBe('full')
-  })
-
-  it('never says full for a day that missed its own bar', () => {
-    const daily = activity({ targetAmount: 4 * HOUR, targetPeriod: 'day' })
-    expect(dayCredit(daily, 3 * HOUR, true)).toBe('partial')
   })
 })
 
