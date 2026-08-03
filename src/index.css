@@ -1,0 +1,305 @@
+@import 'tailwindcss';
+
+/**
+ * Inter, self-hosted rather than linked: the app has to render offline and installs its
+ * own assets, so the font ships in the bundle and Workbox precaches it like any other.
+ *
+ * One `@font-face` for the one subset this app needs, rather than the package's own
+ * stylesheet, which pulls in seven subsets — Cyrillic and Vietnamese included — for a
+ * 218 kB font on a single-user tracker. A glyph outside Latin falls through to
+ * `system-ui`, which is the same thing that happened before there was a webfont at all.
+ */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2')
+    format('woff2-variations');
+}
+
+/**
+ * The semantic layer.
+ *
+ * Every value here is the Tailwind colour the app already resolved to, so naming them
+ * changed nothing on screen. The point is that a surface is now called a surface: a
+ * screen asks for `bg-surface` rather than picking `slate-800` out of a ramp and hoping
+ * the other seven files picked the same one. They did not — the same "success" green was
+ * written `emerald-400` in Settings and `green-400` in Insights.
+ */
+@theme {
+  --color-canvas: var(--color-slate-900);
+  --color-surface: var(--color-slate-800);
+  --color-raised: var(--color-slate-700);
+  --color-raised-hover: var(--color-slate-600);
+  --color-recess: var(--color-slate-900);
+  --color-line: var(--color-slate-700);
+  --color-line-subtle: var(--color-slate-800);
+
+  /**
+   * Four steps, not the seven shades the screens had drifted into. slate-50, -100 and
+   * -200 were all being used for primary text on the same surfaces, which is a
+   * distinction no reader can see and every author has to guess at.
+   */
+  --color-ink: var(--color-slate-100);
+  --color-ink-soft: var(--color-slate-300);
+  --color-ink-muted: var(--color-slate-400);
+  /**
+   * 3.7:1 on the canvas, so this is below the 4.5:1 floor by construction: it is for a
+   * decorative glyph or a chart guide line, never for text a reader has to read. Three of
+   * its first four uses were text, and all three moved up to `ink-muted`.
+   */
+  --color-ink-subtle: var(--color-slate-500);
+
+  --color-accent: var(--color-sky-600);
+  --color-accent-hover: var(--color-sky-500);
+  /* Accent as a foreground — the active tab, a link, the now-line. */
+  --color-accent-ink: var(--color-sky-400);
+  /**
+   * Text on a filled accent — and dark, not white.
+   *
+   * White on sky-600 is 4.02:1, which fails at the 14px every button label uses. The
+   * obvious fix, darkening the accent, breaks something else: the accent is also the
+   * meter and trend-bar fill, and against the recessed track those need 3:1 as graphics
+   * (sky-600 gives 3.55:1, sky-700 only 2.47:1). Inverting the label instead fixes every
+   * filled button at once and leaves the fills alone. 4.6:1, and dark-on-bright reads as
+   * a decision rather than a default.
+   */
+  --color-on-accent: var(--color-slate-950);
+
+  /**
+   * Two status colours, not three. There is no `caution`: amber's only use was the
+   * "went down" delta on Insights, and a delta does not know which direction is good.
+   * A token nothing uses is the abstraction that outlives its reason.
+   */
+  --color-positive: var(--color-emerald-400);
+  --color-danger: var(--color-rose-400);
+
+  /* The dot and meter fill for an activity that no longer exists. */
+  --color-orphan: var(--color-slate-500);
+
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+
+  /**
+   * The one step below `text-xs`, and the floor. Nav labels, an hour gutter, a section
+   * heading. Its existence is what makes the `text-[10px]` the timeline was using
+   * reviewable as a mistake rather than as taste.
+   */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: calc(1 / 0.6875);
+}
+
+/* Dark shell by default: the app is a phone-first surface that stays out of the way. */
+html {
+  color-scheme: dark;
+  background-color: var(--color-canvas);
+}
+
+@layer base {
+  /**
+   * Almost nothing here is worth the tap-and-hold a text selection costs on a phone, and
+   * the activity card's swipe-to-delete actively fights the browser's own selection
+   * behaviour — a horizontal drag would otherwise start selecting the card's label.
+   */
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /**
+   * …except a field being typed into, where not being able to select what you typed is
+   * broken rather than merely untidy. One rule here replaces the `select-text` class the
+   * old habit form had to repeat on every input.
+   *
+   * Known cost: an entry's note on the Log is not selectable. Tapping the row opens a form
+   * where it is an input, which is the only place copying it out is likely to matter.
+   */
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
+/**
+ * One square of the heat grid.
+ *
+ * A `@layer components` block rather than an `@utility`, because its behaviour lives in
+ * data-attribute variants whose *order* decides the outcome — something a utility cannot
+ * express. The square's fill is user data (`--activity`), which is also why this cannot be
+ * a set of Tailwind classes: a runtime hex has no class name.
+ */
+@layer components {
+  .heat-square {
+    border-radius: 0.1875rem;
+    /**
+     * `raised`, not `recess`. A square sits inside a `panel` (which is `surface`), and
+     * `recess` is the canvas shade — a 13px square that colour is nearly invisible against
+     * the panel it sits on. `recess` is the right track for the Meter's long bar and the
+     * wrong one here.
+     */
+    background-color: var(--color-raised);
+    transition:
+      background-color 120ms ease-out,
+      transform 120ms ease-out;
+  }
+
+  /**
+   * Partial credit: progress short of the day's own goal, or a day inside a week that hit
+   * a weekly goal. `lib/days.ts` decides which; both mean the same thing to a reader.
+   *
+   * 50% for the same reason `activity-tint` is 8% — and it is a different number because
+   * it answers a different question. **Nothing sits on a square**, so the constraint is
+   * not text contrast at all: below about 50% the fill sinks into the empty-square grey,
+   * and above it a partial day stops being distinguishable from a completed one.
+   */
+  .heat-square[data-credit='partial'] {
+    background-color: color-mix(in oklab, var(--activity) 50%, transparent);
+  }
+
+  .heat-square[data-credit='full'] {
+    background-color: var(--activity);
+  }
+
+  /* A coarse pointer has no hover, and on touch these would stick after a tap. */
+  @media (hover: hover) {
+    .heat-square[data-credit='none']:hover {
+      background-color: color-mix(in oklab, var(--activity) 35%, transparent);
+    }
+
+    .heat-square[data-credit='full']:hover {
+      transform: scale(1.18);
+    }
+  }
+
+  .heat-square[data-today='true'] {
+    outline: 2px solid var(--color-ink-muted);
+    outline-offset: 1px;
+  }
+
+  /**
+   * After the today outline so it wins the tie. The habit grid shipped with 182 focusable
+   * buttons and no visible focus ring at all, which is the one accessibility gap it had.
+   * The values match `focus-ring`, written out rather than applied because this block is
+   * order-sensitive and `@apply` would flatten it.
+   */
+  .heat-square:focus-visible {
+    outline: 2px solid var(--color-accent-ink);
+    outline-offset: 2px;
+  }
+}
+
+/**
+ * The keyboard-focus ring, as one utility rather than four classes repeated on every
+ * control. A phone has no focus ring to draw; a desktop keyboard user has nothing else
+ * telling them where they are, so every interactive element carries this.
+ */
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--color-accent-ink);
+    outline-offset: 2px;
+  }
+}
+
+/**
+ * A raised block of content on the canvas. Padding is left to the caller: a stat card
+ * and a list row want the same surface and different insets.
+ */
+@utility panel {
+  background-color: var(--color-surface);
+  border-radius: var(--radius-xl);
+}
+
+/**
+ * An activity's own colour, which is user data and therefore any hex at all.
+ *
+ * Both utilities read `--activity`, set inline on the element that owns it. That one
+ * custom property replaced four separate inline styles and two string-concatenated alpha
+ * suffixes (`${color}22`, `${color}44`).
+ *
+ * The 8% is a ceiling, not a preference, and it is set by the *dimmest* text on the
+ * tint rather than the brightest. Worst case the owner picks white: compositing it at
+ * alpha `a` over `--color-surface` gives a background luminance of `0.022 + 0.978a`, and
+ * a foreground needs `(Y_text + 0.05) / (Y_bg + 0.05) ≥ 4.5`. That allows `a ≤ 0.15`
+ * under `--color-ink` (0.909), but only `a ≤ 0.087` under `--color-ink-soft` (0.660) and
+ * a hopeless `a ≤ 0.019` under `--color-ink-muted` (0.360) — which is already close to
+ * its floor on the untinted surface.
+ *
+ * So: 8%, and nothing dimmer than `--color-ink-soft` goes on a tint. Measured rather
+ * than derived — see the contrast probe in the Tracker's verification. The old
+ * running-card fill was 27% under `--color-ink`, which is how a legible card and an
+ * illegible one shipped side by side.
+ *
+ * Full strength is legal only where no text sits: the identity dot, and the rail.
+ */
+@utility activity-tint {
+  background-color: color-mix(in oklab, var(--activity) 8%, transparent);
+}
+
+@utility activity-rail {
+  box-shadow: inset 3px 0 0 var(--activity);
+}
+
+/**
+ * A screen's outer padding, insets included.
+ *
+ * Safe-area handling used to be one line — the bottom inset on the tab bar — so in
+ * standalone iOS every screen's title sat under the status bar, and a landscape notch
+ * clipped the left edge. The insets belong in the one place every screen already asks
+ * for padding, not in five `style` attributes.
+ *
+ * No bottom inset here: below `md` the tab bar owns the bottom edge and applies its own,
+ * and above `md` there is nothing down there to avoid.
+ */
+@utility screen-pad {
+  padding-block: calc(env(safe-area-inset-top) + --spacing(4)) --spacing(4);
+  padding-inline: calc(env(safe-area-inset-left) + --spacing(4))
+    calc(env(safe-area-inset-right) + --spacing(4));
+
+  @variant md {
+    padding-block: calc(env(safe-area-inset-top) + --spacing(6)) --spacing(6);
+    padding-inline: calc(env(safe-area-inset-left) + --spacing(6))
+      calc(env(safe-area-inset-right) + --spacing(6));
+  }
+}
+
+/** Room at the foot of the scroll for the tab bar and the home indicator under it. */
+@utility clear-nav {
+  padding-bottom: calc(--spacing(16) + env(safe-area-inset-bottom));
+
+  @variant md {
+    padding-bottom: 0;
+  }
+}
+
+/**
+ * A transient bar pinned to the bottom edge — the toast and the update notice, which
+ * were byte-identical class strings but for their fill, and both of which sat partly
+ * under the tab bar and the home indicator.
+ *
+ * On a phone it spans the width above the tab bar; on desktop that bar is gone and the
+ * sidebar owns the left edge, so it tucks into the bottom-right corner.
+ */
+@utility docked {
+  position: fixed;
+  /* Above the tab bar, which is `z-20`, because these sit against it. */
+  z-index: 30;
+  inset-inline: --spacing(2);
+  bottom: calc(--spacing(16) + env(safe-area-inset-bottom));
+
+  @variant md {
+    inset-inline: auto --spacing(4);
+    bottom: calc(--spacing(4) + env(safe-area-inset-bottom));
+    width: --spacing(80);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
