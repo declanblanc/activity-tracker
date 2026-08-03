@@ -57,7 +57,9 @@ that is merely on or off would make twenty minutes and six hours look identical.
 - **Activities** — every activity as a card. Check-offs carry a tick and a grid; timers carry
   start/pause/stop and a live reading. Tapping a card's name opens its **sheet**, which is where
   that activity's history, streaks, goal, and its recorded stretches live.
-- **Today** — one day as a vertical timeline, overlapping timers packed into lanes.
+- **Today** — one day as a vertical timeline, overlapping timers packed into lanes, drawn to fit the
+  screen so the shape of the day needs no scrolling. Tap a bar to correct it; tap empty space before
+  now to write down a stretch that started there.
 - **Insights** — day/week/month coverage, a trend chart, and the goals panel that scores both
   measures.
 - **Settings** — export, import, update check.

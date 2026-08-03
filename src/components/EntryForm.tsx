@@ -26,7 +26,11 @@ export default function EntryForm({
   activities: Activity[]
   onChange: (draft: Draft) => void
   onClose: () => void
-  /** Spacing is the caller's: the sheet tucks this under a row, Today sets it apart. */
+  /**
+   * The surface and the spacing are the caller's. A form tucked under a list row wants its own
+   * `panel`; the same form filling a sheet is already on one, and a panel inside a panel reads as a
+   * second card for no reason.
+   */
   className?: string
 }) {
   const [error, setError] = useState<string | null>(null)
@@ -48,7 +52,7 @@ export default function EntryForm({
         event.preventDefault()
         void submit()
       }}
-      className={`flex flex-col gap-3 panel p-4 ${className}`}
+      className={`flex flex-col gap-3 ${className}`}
     >
       <label className="flex flex-col gap-1 text-sm text-ink-soft">
         Activity

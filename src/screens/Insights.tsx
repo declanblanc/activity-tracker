@@ -226,7 +226,7 @@ export default function Insights() {
 
       {draft && (
         <EntryForm
-          className="mt-4"
+          className="panel mt-4 p-4"
           draft={draft}
           // Only a timed activity can hold an interval, so only they are offered.
           activities={activities.filter((activity) => activity.measure === 'duration')}

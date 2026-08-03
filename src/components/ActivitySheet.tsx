@@ -303,7 +303,7 @@ function EntryList({
           form floating above a list of rows never said which of them it was about. */}
       {draft && !draft.id && (
         <EntryForm
-          className="mb-3"
+          className="panel mb-3 p-4"
           draft={draft}
           activities={timedActivities}
           onChange={setDraft}
@@ -328,6 +328,7 @@ function EntryList({
             form={
               draft?.id === entry.id ? (
                 <EntryForm
+                  className="panel p-4"
                   draft={draft}
                   activities={timedActivities}
                   onChange={setDraft}

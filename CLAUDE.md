@@ -61,6 +61,13 @@ These are the ones that look wrong until you know why. All are settled decisions
   goal's unit means something different under each. Archive and add a new one instead.
 - **The swiping surface of a card must be opaque.** `activity-tint` sets `background-color`, so
   putting it on the swipe surface replaces `panel`'s fill and the delete underlay shows through.
+- **The app shell is `h-dvh` and `<main>` is the scroll container**, not the document. Today's
+  timeline asks for exactly the height left over, and a percentage height only resolves inside a
+  flex item whose own height is definite — `min-h-dvh` is not. Any screen taller than the viewport
+  scrolls inside `<main>`; the tab bar and the `docked` toasts are fixed and do not notice.
+- **On Today, the bar container is `pointer-events-none` and each bar restores it.** The container
+  spans the whole day whatever its bars do, so without that it swallows every click meant for the
+  empty space behind it — which is what adds an entry.
 
 ## Conventions
 

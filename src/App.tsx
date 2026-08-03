@@ -52,12 +52,17 @@ const SCREENS: {
  */
 export default function App() {
   return (
-    <div className="flex min-h-dvh flex-col bg-canvas md:flex-row">
+    // `h-dvh` and not `min-h-dvh`: a percentage height inside a flex item only resolves when the
+    // item's own height is definite, and `min-height` does not make it so. Today's timeline asks for
+    // exactly the space left over, and under `min-h-dvh` it silently collapsed to its floor instead.
+    // The trade is that scrolling moves from the document into `<main>`, which is the app-shell
+    // arrangement anyway — the tab bar and the toasts are fixed, so nothing else notices.
+    <div className="flex h-dvh flex-col overflow-hidden bg-canvas md:flex-row">
       <Sidebar />
       {/* `min-w-0` so a wide child (the trend chart) cannot push the flex row past the viewport
           instead of shrinking. `clear-nav` leaves room for the bottom bar and the home indicator
           beneath it, and collapses at `md` where neither exists. */}
-      <main className="clear-nav min-w-0 flex-1">
+      <main className="clear-nav min-w-0 flex-1 overflow-y-auto">
         {/* No fallback content: the chunk is served from the same cache as the shell, so the
             wait is a frame or two, and a spinner that flashes is worse than nothing. */}
         <Suspense fallback={null}>
