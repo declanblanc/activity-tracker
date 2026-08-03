@@ -328,7 +328,11 @@ function TapToAdd({
         const fraction = ((event.clientY - box.top) / box.height) * elapsed
         onAdd(day.start + fraction * (day.end - day.start))
       }}
-      className="absolute top-0 right-0 left-12 cursor-copy rounded-md transition-colors hover:bg-raised/30"
+      // `cursor-copy` and nothing else. This is one element covering the whole elapsed day, so any
+      // hover background lights the entire timeline at once — which reads as the day being selected
+      // rather than as a hint about the few pixels under the pointer. The cursor is already the
+      // affordance, and it points at exactly the spot that would be used.
+      className="absolute top-0 right-0 left-12 cursor-copy"
       style={{ height: `${elapsed * 100}%` }}
     />
   )
