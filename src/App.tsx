@@ -1,10 +1,9 @@
-import { BarChart3, CalendarDays, LayoutGrid, ScrollText, Settings2 } from 'lucide-react'
+import { BarChart3, CalendarDays, LayoutGrid, Settings2 } from 'lucide-react'
 import { lazy, Suspense, type ComponentType, type ReactElement } from 'react'
 import { NavLink, Route, Routes } from 'react-router'
 import ForgottenPrompt from './components/ForgottenPrompt.tsx'
 import UpdatePrompt from './components/UpdatePrompt.tsx'
 import Activities from './screens/Activities.tsx'
-import Log from './screens/Log.tsx'
 import Settings from './screens/Settings.tsx'
 import Today from './screens/Today.tsx'
 
@@ -16,15 +15,18 @@ import Today from './screens/Today.tsx'
 const Insights = lazy(() => import('./screens/Insights.tsx'))
 
 /**
- * The five screens, in tab order. One list drives both the routes and the nav.
+ * The four screens, in tab order. One list drives both the routes and the nav.
  *
  * Home is "Activities" rather than "Tracker": it holds everything now, checked off or timed, so
  * naming it after the timer half would be a lie about two thirds of the cards on it.
  *
- * `Today` and `Log` are about intervals and so show only timed activities. They keep their tabs
- * regardless: filtering the list on "does a timed activity exist" would change the tab bar from
- * five columns to four as data changed, moving every tab under the thumb. Each instead carries
- * an empty state that says what it draws and points back here.
+ * `Today` is about intervals and so shows only timed activities. It keeps its tab regardless:
+ * filtering the list on "does a timed activity exist" would change the tab bar's column count as
+ * data changed, moving every tab under the thumb. It carries an empty state that says what it
+ * draws and points back here.
+ *
+ * There is no Log tab. A per-activity history reads better inside that activity's own sheet, and a
+ * fourth screen listing the same entries a fifth way was not worth a tab.
  */
 const SCREENS: {
   path: string
@@ -34,7 +36,6 @@ const SCREENS: {
 }[] = [
   { path: '/', label: 'Activities', Icon: LayoutGrid, element: <Activities /> },
   { path: '/today', label: 'Today', Icon: CalendarDays, element: <Today /> },
-  { path: '/log', label: 'Log', Icon: ScrollText, element: <Log /> },
   { path: '/insights', label: 'Insights', Icon: BarChart3, element: <Insights /> },
   { path: '/settings', label: 'Settings', Icon: Settings2, element: <Settings /> },
 ]
@@ -82,7 +83,7 @@ function NotFound() {
     <section className="screen-pad mx-auto w-full max-w-3xl">
       <h1 className="text-xl font-semibold text-ink">Not found</h1>
       <p className="mt-2 text-sm text-ink-muted">
-        That page does not exist. Everything lives behind the five tabs.
+        That page does not exist. Everything lives behind the four tabs.
       </p>
     </section>
   )
@@ -120,9 +121,9 @@ function Sidebar() {
 }
 
 /**
- * Phone navigation: five tabs across the bottom edge, above the home indicator.
+ * Phone navigation: four tabs across the bottom edge, above the home indicator.
  *
- * The labels are visible rather than `aria-label`-only. Five icons alone left three of the
+ * The labels are visible rather than `aria-label`-only. The icons alone left several of the
  * destinations as guesswork. The visible text is also the accessible name now, so there are no
  * longer two of those to keep in agreement.
  */
@@ -130,9 +131,9 @@ function BottomBar() {
   return (
     <nav
       aria-label="Main"
-      // `z-20` above the screens' own sticky headings, which sit at `z-10`: the Log's day
-      // headings scrolled out over the top of the tab bar without it.
-      className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t border-line bg-surface md:hidden"
+      // `z-20` above any sticky heading a screen of its own sets at `z-10`, which would otherwise
+      // scroll out over the top of the tab bar.
+      className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-4 border-t border-line bg-surface md:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       {SCREENS.map(({ path, label, Icon }) => (

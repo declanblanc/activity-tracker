@@ -64,8 +64,8 @@ export function dayWindow(at: number): TimeWindow {
  * The local calendar week containing `at`, starting on `WEEK_STARTS_ON`.
  *
  * Like `dayWindow`, the end is the next week's start rather than `start + 7 days`, so the
- * week that contains a DST transition is 167 or 169 hours long — which is what the Log has
- * to draw and what untracked time is measured against.
+ * week that contains a DST transition is 167 or 169 hours long, which is what untracked time is
+ * measured against.
  */
 export function weekWindow(at: number): TimeWindow {
   const weekStart = startOfWeek(at, { weekStartsOn: WEEK_STARTS_ON })

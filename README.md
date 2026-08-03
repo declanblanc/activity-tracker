@@ -48,9 +48,24 @@ neither knowing nor caring which kind of activity it is looking at.
 So "3 days of 5 this week" and "2h 45m of 4h today" go through exactly the same code.
 
 What is *not* shared is how history gets drawn, and deliberately so. A check-off activity gets the
-contribution grid, which answers "on which days did this happen". A timed one gets the Today
-timeline, the Log and the Insights trend, all of which can show *how much* — a square that is
-merely on or off would make twenty minutes and six hours look identical.
+contribution grid, which answers "on which days did this happen". A timed one gets a list of its
+stretches, the Today timeline and the Insights trend, all of which can show *how much* — a square
+that is merely on or off would make twenty minutes and six hours look identical.
+
+## The four screens
+
+- **Activities** — every activity as a card. Check-offs carry a tick and a grid; timers carry
+  start/pause/stop and a live reading. Tapping a card's name opens its **sheet**, which is where
+  that activity's history, streaks, goal, and its recorded stretches live.
+- **Today** — one day as a vertical timeline, overlapping timers packed into lanes.
+- **Insights** — day/week/month coverage, a trend chart, and the goals panel that scores both
+  measures.
+- **Settings** — export, import, update check.
+
+There is no separate log screen: a timed activity's stretches are listed in its own sheet, newest
+first, and each row opens the form that corrects it. The trade-off is that there is no one place
+showing every activity's stretches for an arbitrary past day — Today does it for today, and
+Insights' breakdown gives per-activity totals for a period.
 
 ## Where the data lives
 

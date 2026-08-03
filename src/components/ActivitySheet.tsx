@@ -1,16 +1,31 @@
-import { BarChart3, ChevronLeft, ChevronRight, Pause, Play, Plus, Square, X } from 'lucide-react'
-import type { CSSProperties } from 'react'
+import {
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  Pause,
+  Play,
+  Plus,
+  RotateCcw,
+  Square,
+  X,
+} from 'lucide-react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import type { Activity, DateKey } from '../data/types.ts'
+import { isOpen, type Activity, type DateKey, type Entry } from '../data/types.ts'
 import { targetAt } from '../lib/accounting/goals.ts'
 import { formatAmount, formatDuration, formatElapsed, formatTime } from '../lib/format.ts'
 import { useNow } from '../lib/useNow.ts'
+import EntryForm from './EntryForm.tsx'
+import { blankDraft, draftFrom, type Draft } from './entryDraft.ts'
 import { HeatGrid } from './HeatGrid.tsx'
 import Button, { IconButton } from './ui/Button.tsx'
 import Stat from './ui/Stat.tsx'
 
 /** A full year of columns. The strip scrolls, so a narrow drawer still shows all of it. */
 const SHEET_WEEKS = 53
+
+/** Stretches the sheet lists. Enough to cover the recent past without becoming an archive. */
+export const SHEET_ENTRIES = 30
 
 /**
  * Everything about one activity, and everything you can do to it other than run it from the
@@ -28,7 +43,10 @@ const SHEET_WEEKS = 53
 export default function ActivitySheet({
   activity,
   amounts,
+  entries,
+  timedActivities,
   today,
+  now,
   thisPeriod,
   streak,
   longest,
@@ -40,6 +58,7 @@ export default function ActivitySheet({
   onStart,
   onPause,
   onStop,
+  onResume,
   onEdit,
   onArchive,
   onMoveEarlier,
@@ -49,7 +68,15 @@ export default function ActivitySheet({
 }: {
   activity: Activity
   amounts: Map<DateKey, number>
+  /** This activity's own stretches, newest first and already capped. Empty for a check-off. */
+  entries: Entry[]
+  /**
+   * Every timed activity, for the entry form's own picker — which is what still allows an entry
+   * to be moved to a different activity. Doing so makes the row leave this list, correctly.
+   */
+  timedActivities: Activity[]
   today: DateKey
+  now: number
   /** Progress inside the current period of the activity's own target. */
   thisPeriod: number
   streak: number
@@ -62,6 +89,11 @@ export default function ActivitySheet({
   onStart: () => void
   onPause: () => void
   onStop: () => void
+  /**
+   * Take back the stop that ended the last block. Present only when there is one to take back and
+   * the activity is not already running.
+   */
+  onResume?: () => void
   onEdit: () => void
   onArchive: () => void
   onMoveEarlier?: () => void
@@ -124,6 +156,17 @@ export default function ActivitySheet({
           <p className="min-w-0 flex-1 truncate text-sm tabular-nums text-ink-soft">
             <BlockReading startedAt={startedAt} blockBefore={blockBefore} inBlock={inBlock} />
           </p>
+
+          {/* Taking back a stop is the one mistake no amount of editing entries can undo, because
+              what a stop ends is the *block*, which no entry records. It sits beside the controls
+              rather than on a row: it was only ever attached to one in the Log because that screen
+              had no per-activity control area to put it in. */}
+          {onResume && (
+            <Button variant="quiet" className="shrink-0 px-3 text-xs" onClick={onResume}>
+              <RotateCcw className="size-3.5" aria-hidden />
+              Resume
+            </Button>
+          )}
         </div>
       )}
 
@@ -137,20 +180,16 @@ export default function ActivitySheet({
         />
       </dl>
 
-      {/* The year grid is for check-offs only — see `HeatGrid`. A timed activity gets a plain way
-          in to the entry form instead, which is what tapping a square used to be for. */}
+      {/* How history is drawn is the one thing the two measures do not share. A check-off gets the
+          contribution grid; a timed activity gets its stretches as a list, because a square that
+          is merely on or off throws away the quantity. */}
       {timed ? (
-        !activity.archived && (
-          <div className="mt-6">
-            <Button variant="quiet" onClick={() => onDayActivate(today)}>
-              <Plus className="size-4" aria-hidden />
-              Add time
-            </Button>
-            <p className="mt-2 text-2xs text-ink-muted">
-              For a stretch the timer missed. The Log can correct any day.
-            </p>
-          </div>
-        )
+        <EntryList
+          activity={activity}
+          entries={entries}
+          timedActivities={timedActivities}
+          now={now}
+        />
       ) : (
         <div className="mt-6">
           <h3 className="mb-2 text-sm font-medium text-ink-muted">Past year</h3>
@@ -213,6 +252,161 @@ export default function ActivitySheet({
     </div>
   )
 }
+
+/**
+ * One timed activity's recorded stretches, newest first — and the place they get corrected.
+ *
+ * This is what the Log screen used to be, narrowed to one activity. What that screen could do and
+ * this cannot is show a past day across *every* activity at once; Today still does it for today,
+ * and Insights' breakdown gives per-activity totals for a period.
+ *
+ * A plain reverse-chronological list rather than the Log's week stepper: a sheet is a glance, not
+ * an archive, and browsing arbitrary weeks of one activity is what the Insights trend is for.
+ *
+ * ponytail: capped at `SHEET_ENTRIES`, sliced from the year the dashboard already read — so this
+ * costs no query of its own. Ceiling: a stretch older than that year, or older than the newest
+ * thirty, is not reachable here. The same bound already governs the streak and the total beside
+ * it. Upgrade path is a paged read on the `[activityId+endedAt]` index.
+ */
+function EntryList({
+  activity,
+  entries,
+  timedActivities,
+  now,
+}: {
+  activity: Activity
+  entries: Entry[]
+  timedActivities: Activity[]
+  now: number
+}) {
+  // Owned here rather than passed in: the sheet unmounts when it closes, which is what resets a
+  // half-typed correction, and no other screen needs to know an entry is being edited.
+  const [draft, setDraft] = useState<Draft | null>(null)
+
+  return (
+    <div className="mt-6">
+      <div className="mb-2 flex items-baseline gap-2">
+        <h3 className="flex-1 text-sm font-medium text-ink-muted">Recent</h3>
+        {!activity.archived && (
+          <Button
+            variant="quiet"
+            className="min-h-9 px-3 text-xs"
+            onClick={() => setDraft({ ...blankDraft(now), activityId: activity.id })}
+          >
+            <Plus className="size-3.5" aria-hidden />
+            Add time
+          </Button>
+        )}
+      </div>
+
+      {/* Only a new entry belongs up here. An edit belongs under the row it corrects, because a
+          form floating above a list of rows never said which of them it was about. */}
+      {draft && !draft.id && (
+        <EntryForm
+          className="mb-3"
+          draft={draft}
+          activities={timedActivities}
+          onChange={setDraft}
+          onClose={() => setDraft(null)}
+        />
+      )}
+
+      {entries.length === 0 && !draft && (
+        <p className="text-sm text-ink-muted">
+          Nothing recorded yet. Start the timer above, or write down a stretch it missed.
+        </p>
+      )}
+
+      <ul className="flex flex-col gap-1.5">
+        {entries.map((entry) => (
+          <EntryRow
+            key={entry.id}
+            entry={entry}
+            now={now}
+            // A second tap on the open row closes it again, the way the chevron says it should.
+            onEdit={() => setDraft(draft?.id === entry.id ? null : draftFrom(entry))}
+            form={
+              draft?.id === entry.id ? (
+                <EntryForm
+                  draft={draft}
+                  activities={timedActivities}
+                  onChange={setDraft}
+                  onClose={() => setDraft(null)}
+                />
+              ) : undefined
+            }
+          />
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * One stretch as a row: when it ran, for how long, and its note.
+ *
+ * No colour dot and no activity name, unlike the Log's version of this row — inside one activity's
+ * sheet both would be the same on every row. The date takes their place, since the list is not
+ * grouped by day.
+ */
+function EntryRow({
+  entry,
+  now,
+  onEdit,
+  form,
+}: {
+  entry: Entry
+  now: number
+  onEdit: () => void
+  /** This row's edit form, when it is the row being edited. */
+  form?: ReactNode
+}) {
+  const running = isOpen(entry)
+  const editing = form !== undefined
+
+  return (
+    <li className="flex flex-col gap-1.5">
+      {/* Nearly the whole row is the tap target: on a phone a row of small action buttons is
+          harder to hit than the row itself, and editing is what almost every row does. The
+          chevron is there because nothing else said so; it turns down when the form opens. */}
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-expanded={editing}
+        className={`focus-ring panel group flex min-w-0 items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-raised ${
+          editing ? 'bg-raised' : ''
+        }`}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex items-baseline gap-2">
+            <span className="shrink-0 text-xs text-ink-muted">{rowDate(entry.startedAt)}</span>
+            <span className="min-w-0 flex-1 truncate text-sm text-ink tabular-nums">
+              {formatTime(entry.startedAt)} –{' '}
+              {running ? <span className="text-accent-ink">now</span> : formatTime(entry.endedAt)}
+            </span>
+          </span>
+          {entry.note && (
+            <span className="mt-0.5 block truncate text-xs text-ink-soft">{entry.note}</span>
+          )}
+        </span>
+        <span className="shrink-0 text-sm text-ink-soft tabular-nums">
+          {formatDuration((running ? now : entry.endedAt) - entry.startedAt)}
+        </span>
+        <ChevronRight
+          aria-hidden
+          className={`size-4 shrink-0 text-ink-subtle transition-transform group-hover:text-ink-muted ${
+            editing ? 'rotate-90' : ''
+          }`}
+        />
+      </button>
+
+      {form}
+    </li>
+  )
+}
+
+const rowDate = (at: number) =>
+  new Date(at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 
 /** What the activity is aiming for, and how far into the current period it is. */
 function GoalLine({

@@ -159,9 +159,9 @@ export default function Insights() {
                 Timed activities only: a check-off has no interval to write, and its equivalent
                 gesture is ticking a past square on the year grid below.
 
-                Icon-only, unlike the Log's `+ Add`: this header already carries a name and a way
-                out of it, and the word "Add" cost enough width to truncate the activity's name to
-                six characters on a phone. */}
+                Icon-only: this header already carries a name and a way out of it, and the word
+                "Add" cost enough width to truncate the activity's name to six characters on a
+                phone. */}
             {focus.measure === 'duration' && (
               <IconButton
                 label="Add an entry"
@@ -450,7 +450,7 @@ function FocusSummary({
  * The count alone, with no "since 6:45 PM" after it. This sits in a card about a third of
  * a phone's width, where the start time wrapped onto a second line — and a bare clock
  * time is a lie about the stretch that has been open since Friday, which is exactly the
- * one worth noticing. The Log and Today both name the start.
+ * one worth noticing. The sheet's own list and Today both name the start.
  */
 function RunningTimer({ startedAt }: { startedAt: number }) {
   const now = useNow()

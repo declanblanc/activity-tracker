@@ -33,8 +33,8 @@ type Props = {
  * **Check-off activities only.** The grid answers "did this happen, on which days", which is the
  * whole question for something you tick and the wrong question for something you measure in
  * hours: a timed activity's day is a quantity, and a square that is on or off either throws that
- * quantity away or invents a threshold for it. Timed activities get the Today timeline, the Log
- * and the Insights trend instead, all of which can show magnitude.
+ * quantity away or invents a threshold for it. Timed activities get a list of their stretches in
+ * their own sheet, the Today timeline and the Insights trend, all of which can show magnitude.
  *
  * That is why this takes a colour and a target rather than an `Activity` — there is no `measure`
  * here to branch on, and no way to pass something that has one.

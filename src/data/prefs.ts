@@ -35,9 +35,9 @@ type Prefs = {
    * taken back. Absent once the activity is started again, because a new block supersedes
    * the one before it.
    *
-   * Stopping is the only thing the dashboard does that the record cannot express, so it is
-   * the only thing needing an undo: pausing keeps the block, and every other mistake is an
-   * entry the Log can already edit.
+   * Stopping is the only thing the dashboard does that the record cannot express, so it is the
+   * only thing needing an undo: pausing keeps the block, and every other mistake is an entry the
+   * activity's own sheet can already edit.
    */
   resumableBlockStartedAt: Record<string, number>
 }

@@ -115,7 +115,7 @@ export async function startActivity(activityId: string, at: number = Date.now())
  * a stop immediately followed by a start, or a start nobody meant — rather than something
  * that happened.
  *
- * The floor is on this path only. `saveEntry` has no such rule: times typed into the Log
+ * The floor is on this path only. `saveEntry` has no such rule: times typed into a form
  * are deliberate, and a hand-corrected twenty-second entry is a record, not a slip.
  */
 export const MIN_TRACKED_MS = 30_000
@@ -266,7 +266,7 @@ async function mergeSameActivityOverlaps(saved: Entry): Promise<Entry> {
  * top of an interval the destination activity already has, and that has to merge.
  *
  * Nothing here rejects an archived destination — correcting old data is exactly why
- * the Log can be edited at all.
+ * a recorded entry can be edited at all.
  */
 export async function reassignEntry(id: string, activityId: string): Promise<Entry> {
   return db.transaction('rw', db.entries, async () => {

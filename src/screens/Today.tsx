@@ -35,7 +35,8 @@ const LABEL_MIN_HEIGHT = 26
  * the page: a bar's height would stop meaning duration. The screen opens scrolled to now
  * instead, which is the problem the height was standing in for.
  *
- * Tapping a bar opens the same form the Log opens. This is the screen where a mistake is
+ * Tapping a bar opens the same form an activity's sheet opens. This is the screen where a
+ * mistake is
  * usually spotted — a run that clearly did not last four hours is obvious as a shape long
  * before it is obvious as a row of numbers — so it is the screen that should be able to
  * fix it.
@@ -205,7 +206,7 @@ function ActivityTotals({
  * 3px floor — which is below the 24px WCAG 2.5.8 asks for. That is not fixable here
  * without the height ceasing to mean duration, which is the screen's whole grammar. It
  * relies instead on that criterion's equivalent-control exception: every entry is also a
- * full-height row on the Log, opening this same form.
+ * full-height row in that activity's sheet, opening this same form.
  */
 function Bar({
   entry,

@@ -11,9 +11,9 @@ import { toInput, type Draft } from './entryDraft.ts'
  * Nothing is validated here: `saveEntry` is the trust boundary, and its messages are
  * written for the user. The form's only job is to render what it throws.
  *
- * It lives here rather than inside the Log because two screens correct the record now.
- * The Log opens it from a row; Today opens it from a bar on the timeline, which is where
- * a wrong entry is usually *noticed*.
+ * It lives here rather than inside either caller because two places correct the record. An
+ * activity's sheet opens it from a row in that activity's history; Today opens it from a bar on
+ * the timeline, which is where a wrong entry is usually *noticed*.
  */
 export default function EntryForm({
   draft,
@@ -26,7 +26,7 @@ export default function EntryForm({
   activities: Activity[]
   onChange: (draft: Draft) => void
   onClose: () => void
-  /** Spacing is the caller's: the Log tucks this under a row, Today sets it apart. */
+  /** Spacing is the caller's: the sheet tucks this under a row, Today sets it apart. */
   className?: string
 }) {
   const [error, setError] = useState<string | null>(null)

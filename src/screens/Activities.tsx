@@ -4,9 +4,7 @@ import { useState } from 'react'
 import ActivityForm from '../components/ActivityForm.tsx'
 import { blankDraft, draftFrom, toInput, type Draft } from '../components/activityDraft.ts'
 import { CountCard, DurationCard } from '../components/ActivityCard.tsx'
-import ActivitySheet from '../components/ActivitySheet.tsx'
-import EntryForm from '../components/EntryForm.tsx'
-import { blankDraft as blankEntryDraft, type Draft as EntryDraft } from '../components/entryDraft.ts'
+import ActivitySheet, { SHEET_ENTRIES } from '../components/ActivitySheet.tsx'
 import Button from '../components/ui/Button.tsx'
 import EmptyState from '../components/ui/EmptyState.tsx'
 import Meter from '../components/ui/Meter.tsx'
@@ -40,7 +38,7 @@ import { periodTotals, totalSince, type PeriodTotals } from '../lib/accounting/t
 import { dayAmounts, periodAmounts } from '../lib/days.ts'
 import { formatDuration } from '../lib/format.ts'
 import { nextColor } from '../lib/palette.ts'
-import { dayWindow, dayWindowsIn, parseKey, periodWindow, trailingWindows } from '../lib/time.ts'
+import { dayWindow, dayWindowsIn, periodWindow, trailingWindows } from '../lib/time.ts'
 import { useNow } from '../lib/useNow.ts'
 import { useToday } from '../lib/useToday.ts'
 
@@ -87,6 +85,8 @@ export default function Activities() {
   // Mirrored in component state because `prefs` is a plain read: this is the only screen that
   // opens and closes blocks, so a store to make them reactive across screens would buy nothing.
   const [blockStartedAt, setBlockStartedAt] = useState(() => getPref('blockStartedAt'))
+  // Read as well as written now that the sheet offers Resume, so it is mirrored the same way.
+  const [resumable, setResumable] = useState(() => getPref('resumableBlockStartedAt'))
 
   const day = dayWindow(now)
   const horizon = trailingWindows(now, 'week', HISTORY_WEEKS)
@@ -107,7 +107,6 @@ export default function Activities() {
   )
 
   const [draft, setDraft] = useState<{ draft: Draft; id?: string } | null>(null)
-  const [entryDraft, setEntryDraft] = useState<EntryDraft | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
   // A deadline rather than a timer: `now` already ticks this screen, so it can retire the toast
@@ -152,9 +151,9 @@ export default function Activities() {
     const entry = await startActivity(activityId)
     if (!resuming) {
       setBlockStart(activityId, entry.startedAt)
-      // A new block discards the stopped one the Log could have offered back: once time is
+      // A new block discards the stopped one the sheet could have offered back: once time is
       // being tracked against a fresh block, the old one is history.
-      setActivityStamp('resumableBlockStartedAt', activityId, undefined)
+      setResumable(setActivityStamp('resumableBlockStartedAt', activityId, undefined))
     }
   }
 
@@ -179,7 +178,7 @@ export default function Activities() {
   }
 
   /**
-   * End the block as well as the entry, filing where it began so the Log can put it back.
+   * End the block as well as the entry, filing where it began so the sheet can put it back.
    * Stopping is otherwise the one action here that loses something no entry records.
    */
   const stop = async (activityId: string) => {
@@ -187,9 +186,24 @@ export default function Activities() {
     const { discarded } = await stopActivity(activityId)
     setBlockStart(activityId, undefined)
     if (blockStart !== undefined) {
-      setActivityStamp('resumableBlockStartedAt', activityId, blockStart)
+      setResumable(setActivityStamp('resumableBlockStartedAt', activityId, blockStart))
     }
     if (discarded) reportDiscarded(activityId)
+  }
+
+  /**
+   * Take back the stop that ended this block: restore where it began, and open a stretch to carry
+   * it on.
+   *
+   * The new stretch starts now rather than at the stop, which leaves a gap for however long the
+   * mistake went unnoticed. That is the honest direction to be wrong in — the alternative invents
+   * tracked time — and the gap is one entry edit away from being fixed, in the same sheet.
+   */
+  const resume = async (activityId: string) => {
+    const blockStart = resumable[activityId]
+    await startActivity(activityId)
+    setBlockStart(activityId, blockStart)
+    setResumable(setActivityStamp('resumableBlockStartedAt', activityId, undefined))
   }
 
   /**
@@ -230,18 +244,6 @@ export default function Activities() {
       visibleIds.has(activity.id) ? reordered[next++].id : activity.id,
     )
     return reorderActivities(order)
-  }
-
-  /** A timed day cannot be "ticked", so its square opens the entry form pointed at that day. */
-  const openDay = (activity: Activity, dayKey: DateKey) => {
-    if (activity.measure === 'count') {
-      void toggleCompletion(activity.id, dayKey)
-      return
-    }
-    // Nine in the morning on the day that was tapped: a start time that has to be corrected is
-    // better than one that defaults to now and files the time under the wrong day.
-    const at = parseKey(dayKey).getTime() + 9 * 60 * 60 * 1000
-    setEntryDraft({ ...blankEntryDraft(at), activityId: activity.id })
   }
 
   const openActivity = activities.find((activity) => activity.id === openId)
@@ -368,10 +370,22 @@ export default function Activities() {
                 startedAt={startedAt}
                 blockBefore={blockBefore(entries, openActivity.id, blockStart, startedAt, now)}
                 inBlock={blockStart !== undefined}
-                onDayActivate={(dayKey) => openDay(openActivity, dayKey)}
+                entries={recentEntries(entries, openActivity.id)}
+                timedActivities={activities.filter((a) => a.measure === 'duration')}
+                now={now}
+                onDayActivate={(dayKey) => void toggleCompletion(openActivity.id, dayKey)}
                 onStart={() => void startOrResume(openActivity.id)}
                 onPause={() => void pause(openActivity.id)}
                 onStop={() => void stop(openActivity.id)}
+                onResume={
+                  // Nothing to take back once it is running again, and an archived activity is not
+                  // offered: archiving stopped its timer on purpose.
+                  resumable[openActivity.id] !== undefined &&
+                  startedAt === undefined &&
+                  !openActivity.archived
+                    ? () => void resume(openActivity.id)
+                    : undefined
+                }
                 onEdit={() =>
                   setDraft({ draft: draftFrom(openActivity), id: openActivity.id })
                 }
@@ -416,27 +430,22 @@ export default function Activities() {
           />
         )}
       </Modal>
-
-      <Modal
-        open={entryDraft !== null}
-        onClose={() => setEntryDraft(null)}
-        label="Add time"
-        className="m-auto max-h-[calc(100dvh-2rem)] w-[min(26rem,calc(100vw-2rem))] overflow-y-auto"
-      >
-        {entryDraft && (
-          <div className="rounded-2xl bg-surface p-5 shadow-xl">
-            <EntryForm
-              draft={entryDraft}
-              // Only timed activities can hold an interval, so only they are offered.
-              activities={activities.filter((activity) => activity.measure === 'duration')}
-              onChange={setEntryDraft}
-              onClose={() => setEntryDraft(null)}
-            />
-          </div>
-        )}
-      </Modal>
     </section>
   )
+}
+
+/**
+ * One activity's most recent stretches, newest first.
+ *
+ * Sliced from the read the screen already did rather than queried: the dashboard holds a year of
+ * entries for the strips and streaks, and the newest thirty of one activity's are in there. The
+ * same horizon therefore bounds the sheet's list, its streak and its total, which is the honest
+ * arrangement — one number in the sheet cannot see further back than another.
+ */
+function recentEntries(entries: Entry[], activityId: string): Entry[] {
+  const own = entries.filter((entry) => entry.activityId === activityId)
+  // `getEntriesInRange` sorts oldest first, so the newest are at the end.
+  return own.slice(-SHEET_ENTRIES).reverse()
 }
 
 /**

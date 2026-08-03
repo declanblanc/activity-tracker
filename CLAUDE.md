@@ -21,7 +21,12 @@ These are the ones that look wrong until you know why. All are settled decisions
 - **`HeatGrid` is for check-off activities only**, and takes a colour and a weekly target rather
   than an `Activity` so there is nothing in it to branch on. A contribution square is on or off,
   which throws away the quantity that is the whole point of a timed activity. Timed history lives
-  on the Today timeline, the Log and the Insights trend.
+  in the sheet's own entry list, the Today timeline and the Insights trend.
+- **An activity's history and its corrections live in its sheet**, not on a screen of their own.
+  `ActivitySheet` owns the entry-list draft state, so closing the sheet discards a half-typed
+  correction and no screen has to know one was in progress. The list is sliced from the year the
+  dashboard already read, which is why the same horizon bounds the list, the streak and the total.
+  There is deliberately no cross-activity history: that was a Log screen, and it was dropped.
 - **Never write `null` to an indexed field.** `null` is not a valid IndexedDB key: a record with
   one silently disappears from that index, and `.equals(null)` throws. Open-ness and liveness use
   the numeric sentinels `OPEN_ENTRY_END` and `NOT_DELETED`. Booleans are not valid keys either,

@@ -237,7 +237,8 @@ export function CountCard({
  * **No heat strip.** A contribution graph answers "on which days did this happen", which is the
  * whole story for a check-off and a discarded one for a timer: a square is on or off, so twenty
  * minutes and six hours would look identical. The card stays a compact row and the history goes
- * where magnitude survives — the Today timeline, the Log, and the Insights trend. It is also why
+ * where magnitude survives — the list in its own sheet, the Today timeline, and the Insights
+ * trend. It is also why
  * this card is shorter than a check-off card, which the grid's `items-start` allows for.
  *
  * The number on the card is its **block**: the run from the moment the timer was started to the

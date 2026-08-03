@@ -111,8 +111,8 @@ html {
    * broken rather than merely untidy. One rule here replaces the `select-text` class the
    * old habit form had to repeat on every input.
    *
-   * Known cost: an entry's note on the Log is not selectable. Tapping the row opens a form
-   * where it is an input, which is the only place copying it out is likely to matter.
+   * Known cost: an entry's note in an activity's history is not selectable. Tapping the row opens
+   * a form where it is an input, which is the only place copying it out is likely to matter.
    */
   input,
   textarea {
