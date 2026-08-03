@@ -1,3 +1,5 @@
+import type { Measure } from '../data/types.ts'
+
 const MINUTE = 60 * 1000
 
 /**
@@ -19,6 +21,24 @@ export function formatDuration(ms: number): string {
   const minutes = Math.max(0, Math.round(ms / MINUTE))
   const hours = Math.floor(minutes / 60)
   return hours > 0 ? `${hours}h ${minutes % 60}m` : `${minutes}m`
+}
+
+/**
+ * An amount in whatever unit its measure counts in: a duration as `2h 5m`, a count as a
+ * number of days.
+ *
+ * This is the one function that has to know which measure it is looking at, and it exists
+ * because `lib/days.ts` deliberately erases that distinction — every number reaching a screen
+ * is a bare amount, and only the last step before it is rendered can put a unit on it.
+ *
+ * `bare` drops the unit for a number that already sits beside its own label, as in
+ * "3 of 5 this week", where "3 days of 5 days this week" reads badly.
+ */
+export function formatAmount(measure: Measure, amount: number, bare = false): string {
+  if (measure === 'duration') return formatDuration(amount)
+  const days = Math.max(0, Math.round(amount))
+  if (bare) return String(days)
+  return days === 1 ? '1 day' : `${days} days`
 }
 
 /**

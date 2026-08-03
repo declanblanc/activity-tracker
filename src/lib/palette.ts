@@ -1,21 +1,29 @@
 /**
- * Muted mid-tone pastels. Deliberately a fixed set rather than `<input type="color">`:
- * the grid only looks calm if every colour in it is calm, and a free spectrum picker
- * invites the saturated reds that make a wall of squares exhausting to look at.
+ * Muted mid-tone pastels. Deliberately a fixed set rather than `<input type="color">`: the
+ * home screen is a wall of heat squares, it only looks calm if every colour in it is calm,
+ * and a free spectrum picker invites the saturated reds that make such a wall exhausting to
+ * look at.
  *
- * Each reads as "filled" against both the light and the dark empty-square grey.
+ * Each reads as "filled" against `--color-raised`, the empty square's grey.
+ *
+ * Every swatch carries a name because that name is its accessible label. A picker that
+ * announces "#6ee7b7" to a screen reader has not been labelled at all.
  */
 export const PALETTE = [
-  '#6ee7b7', // mint
-  '#7dd3fc', // sky
-  '#c4b5fd', // lavender
-  '#f0abfc', // orchid
-  '#fda4af', // rose
-  '#fdba74', // peach
-  '#fcd34d', // sand
-  '#bef264', // sage
+  { hex: '#6ee7b7', name: 'Mint' },
+  { hex: '#7dd3fc', name: 'Sky' },
+  { hex: '#c4b5fd', name: 'Lavender' },
+  { hex: '#f0abfc', name: 'Orchid' },
+  { hex: '#fda4af', name: 'Rose' },
+  { hex: '#fdba74', name: 'Peach' },
+  { hex: '#fcd34d', name: 'Sand' },
+  { hex: '#bef264', name: 'Sage' },
 ] as const
 
+/**
+ * Preset emoji, covering both measures — the first two rows suit things you check off, the
+ * last few the kinds of thing you put a timer on. Any emoji at all can still be typed.
+ */
 export const ICONS = [
   '💪',
   '🏃',
@@ -29,9 +37,13 @@ export const ICONS = [
   '🧹',
   '💰',
   '🚭',
+  '💻',
+  '🎧',
+  '🍳',
+  '🚗',
 ] as const
 
-/** Spreads the palette across habits so the first few never collide. */
+/** Spreads the palette across activities so the first few never collide. */
 export function nextColor(usedCount: number): string {
-  return PALETTE[usedCount % PALETTE.length]
+  return PALETTE[usedCount % PALETTE.length].hex
 }
