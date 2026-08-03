@@ -12,10 +12,16 @@ predecessor apps (`../time-tracker`, `../habit-tracker`) were merged into it.
 These are the ones that look wrong until you know why. All are settled decisions.
 
 - **`measure` is branched on in exactly one place**, `dayAmounts` in `lib/days.ts`. Everything
-  downstream — the heat grid, `periodAmounts`, `streaks`, the goals panel — sees one amount per
-  day and must stay measure-agnostic. A second `measure ===` in `lib/` or a screen is a smell;
-  the exceptions are `formatAmount` (the last step before rendering, which has to put a unit on
-  a bare number) and `FocusSummary` (the two measures genuinely have different things to say).
+  downstream — `periodAmounts`, `streaks`, the goals panel — sees one amount per day and must stay
+  measure-agnostic. A second `measure ===` in `lib/` is a smell. A screen may branch on it to
+  decide *which components to render*, which is how the grid stays check-off-only; what it may not
+  do is compute two different numbers. The other exceptions are `formatAmount` (the last step
+  before rendering, which has to put a unit on a bare number) and `FocusSummary` (the two measures
+  genuinely have different things to say).
+- **`HeatGrid` is for check-off activities only**, and takes a colour and a weekly target rather
+  than an `Activity` so there is nothing in it to branch on. A contribution square is on or off,
+  which throws away the quantity that is the whole point of a timed activity. Timed history lives
+  on the Today timeline, the Log and the Insights trend.
 - **Never write `null` to an indexed field.** `null` is not a valid IndexedDB key: a record with
   one silently disappears from that index, and `.equals(null)` throws. Open-ness and liveness use
   the numeric sentinels `OPEN_ENTRY_END` and `NOT_DELETED`. Booleans are not valid keys either,
@@ -43,7 +49,7 @@ These are the ones that look wrong until you know why. All are settled decisions
   month scale. No pro-rating.
 - **A streak skips an in-progress period, unless it has already met its target** — then it counts
   immediately. Waiting for the period to close would mean ticking today never moves the number,
-  which is the point of a heat grid.
+  which is the point of a contribution grid.
 - **Entries are closed, never reopened.** This is what keeps one-open-entry-per-activity
   enforceable by the start/stop path alone.
 - **An activity's `measure` cannot change** once it exists. Its records are shaped by it, and the

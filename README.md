@@ -36,17 +36,21 @@ An activity has a **measure**, and it is the only field that changes what the ap
 - `count` — checked off once per local day, stored as `Completion` rows.
 - `duration` — runs a timer, stored as `Entry` intervals.
 
-Everything else is shared: icon, colour, goal, archive, order, soft delete, the heat grid, the
-streak, the goals panel.
+Everything else is shared: icon, colour, goal, archive, order, soft delete, the streak, the goals
+panel.
 
 That sharing is the whole point, and it works because of one function. `dayAmounts` in
 [src/lib/days.ts](src/lib/days.ts) reduces either measure to **one number per local day** — `1`
 for a logged day, or milliseconds tracked within that day. It is the only place `measure` is
-branched on. Past it, the heat grid shades squares, `periodAmounts` folds days into weeks and
-months, and `streaks` scores them, none of them knowing or caring which kind of activity they are
-looking at.
+branched on. Past it, `periodAmounts` folds days into weeks and months and `streaks` scores them,
+neither knowing nor caring which kind of activity it is looking at.
 
 So "3 days of 5 this week" and "2h 45m of 4h today" go through exactly the same code.
+
+What is *not* shared is how history gets drawn, and deliberately so. A check-off activity gets the
+contribution grid, which answers "on which days did this happen". A timed one gets the Today
+timeline, the Log and the Insights trend, all of which can show *how much* — a square that is
+merely on or off would make twenty minutes and six hours look identical.
 
 ## Where the data lives
 
