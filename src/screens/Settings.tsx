@@ -33,15 +33,19 @@ export default function Settings() {
 
   const exportFile = (extension: 'json' | 'csv', type: string, build: () => Promise<string>) =>
     run(async () => {
-      const name = `time-tracker-${toDateTimeInput(Date.now()).slice(0, 10)}.${extension}`
+      const name = `activity-tracker-${toDateTimeInput(Date.now()).slice(0, 10)}.${extension}`
       download(name, await build(), type)
       return `Saved ${name}.`
     })
 
   async function importFile(file: File) {
     await run(async () => {
-      const { activities, entries } = await importJson(await file.text())
-      return `Imported ${activities} ${plural(activities, 'activity', 'activities')} and ${entries} ${plural(entries, 'entry', 'entries')}.`
+      const { activities, entries, completions } = await importJson(await file.text())
+      return (
+        `Imported ${activities} ${plural(activities, 'activity', 'activities')}, ` +
+        `${entries} ${plural(entries, 'entry', 'entries')} and ` +
+        `${completions} ${plural(completions, 'check-off', 'check-offs')}.`
+      )
     })
     // Clear the input so re-picking the same file fires `change` again.
     if (fileInput.current) fileInput.current.value = ''

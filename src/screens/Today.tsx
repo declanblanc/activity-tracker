@@ -51,6 +51,11 @@ export default function Today() {
 
   if (!entries || !activities) return null
 
+  // Entries belong to timed activities only, so this screen is about them. A check-off has no
+  // interval to draw or list; its history is the grid on the Activities screen.
+  const timed = activities.filter((activity) => activity.measure === 'duration')
+  const anyTimed = timed.some((activity) => !activity.archived)
+
   const byId = new Map(activities.map((activity) => [activity.id, activity]))
   // Clip first, then pack: two entries that overlap only outside today must not be
   // pushed into separate lanes for an overlap the screen never shows.
@@ -84,12 +89,17 @@ export default function Today() {
               to="/"
               className="focus-ring inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover"
             >
-              Go to the Tracker
+              Go to Activities
             </Link>
           }
         >
-          Nothing tracked today yet. Start a timer and it will draw itself here as the day
-          goes on.
+          {/* Two states, because "nothing yet today" and "nothing here ever" call for
+              different things. A timeline draws stretches of time, so an owner with only
+              check-off activities would otherwise get a blank screen and no explanation —
+              their history is a grid, and it is on the Activities screen. */}
+          {anyTimed
+            ? 'Nothing tracked today yet. Start a timer and it will draw itself here as the day goes on.'
+            : 'The timeline draws timed stretches. None of your activities are timed — the ones you check off show their history on the Activities grid.'}
         </EmptyState>
       ) : (
         <>
@@ -98,7 +108,7 @@ export default function Today() {
               key={draft.id}
               className="mt-4"
               draft={draft}
-              activities={activities}
+              activities={timed}
               onChange={setDraft}
               onClose={() => setDraft(null)}
             />

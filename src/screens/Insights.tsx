@@ -223,7 +223,8 @@ export default function Insights() {
         <EntryForm
           className="mt-4"
           draft={draft}
-          activities={activities}
+          // Only a timed activity can hold an interval, so only they are offered.
+          activities={activities.filter((activity) => activity.measure === 'duration')}
           onChange={setDraft}
           onClose={() => setDraft(null)}
         />

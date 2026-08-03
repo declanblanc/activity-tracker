@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { ChevronRight, Plus, ScrollText } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
+import { Link } from 'react-router'
 import Button from '../components/ui/Button.tsx'
 import EmptyState from '../components/ui/EmptyState.tsx'
 import PeriodStepper from '../components/ui/PeriodStepper.tsx'
@@ -45,6 +46,11 @@ export default function Log() {
   const activities = useLiveQuery(() => getActivities(true), [])
 
   if (!entries || !activities) return null
+
+  // Entries belong to timed activities only, so this screen is about them. A check-off has no
+  // interval to draw or list; its history is the grid on the Activities screen.
+  const timed = activities.filter((activity) => activity.measure === 'duration')
+  const anyTimed = timed.some((activity) => !activity.archived)
 
   const byId = new Map(activities.map((activity) => [activity.id, activity]))
   // Entries arrive oldest first, so the last write per activity wins. A stopped block has
@@ -102,7 +108,7 @@ export default function Log() {
         <EntryForm
           className="mt-4"
           draft={draft}
-          activities={activities}
+          activities={timed}
           onChange={setDraft}
           onClose={() => setDraft(null)}
         />
@@ -112,13 +118,25 @@ export default function Log() {
         <EmptyState
           icon={<ScrollText className="size-8" />}
           action={
-            <Button variant="primary" onClick={() => setDraft(blankDraft(now))}>
-              Add an entry
-            </Button>
+            anyTimed ? (
+              <Button variant="primary" onClick={() => setDraft(blankDraft(now))}>
+                Add an entry
+              </Button>
+            ) : (
+              <Link
+                to="/"
+                className="focus-ring inline-flex min-h-11 items-center rounded-lg bg-accent px-4 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover"
+              >
+                Go to Activities
+              </Link>
+            )
           }
         >
-          Nothing tracked this week. Step back to an earlier week, or write down a stretch
-          the timers missed.
+          {/* As on Today: an owner with nothing timed has no entries to list, and the grid on
+              the Activities screen is where their check-offs already live. */}
+          {anyTimed
+            ? 'Nothing tracked this week. Step back to an earlier week, or write down a stretch the timers missed.'
+            : 'The log lists timed stretches. None of your activities are timed — the ones you check off show their history on the Activities grid.'}
         </EmptyState>
       )}
 
@@ -164,7 +182,7 @@ export default function Log() {
                     draft?.id === entry.id ? (
                       <EntryForm
                         draft={draft}
-                        activities={activities}
+                        activities={timed}
                         onChange={setDraft}
                         onClose={() => setDraft(null)}
                       />
