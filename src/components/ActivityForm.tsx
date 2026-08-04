@@ -133,7 +133,7 @@ export default function ActivityForm({
           {/* `shrink-0` and no wrapping: without them the unit broke onto two lines and squeezed
               the period select down to its chevron. */}
           <span className="shrink-0 text-sm whitespace-nowrap text-ink-muted">
-            {counted ? 'days per' : 'hours per'}
+            {unitLabel(counted, draft.targetAmount)} per
           </span>
           <select
             value={draft.targetPeriod}
@@ -230,6 +230,12 @@ function MeasureOption({
       {label}
     </button>
   )
+}
+
+/** The goal's unit, singular only when the amount is exactly one: "1 day per", "2 days per". */
+function unitLabel(counted: boolean, targetAmount: string): string {
+  const unit = counted ? 'day' : 'hour'
+  return Number(targetAmount) === 1 ? unit : `${unit}s`
 }
 
 /** What the chosen goal will actually do, in one line. */
