@@ -57,6 +57,11 @@ These are the ones that look wrong until you know why. All are settled decisions
   which is the point of a contribution grid.
 - **Entries are closed, never reopened.** This is what keeps one-open-entry-per-activity
   enforceable by the start/stop path alone.
+- **A merge resolves duplicate open entries, it does not refuse them.** Two devices can each
+  start the same timer offline, so `resolveDuplicateOpenEntries` keeps the latest start open and
+  closes each earlier one where the next began — restamping `updatedAt`, which is what makes the
+  fix win on the device that has not merged yet. Throwing instead (the earlier behaviour) wedges
+  sync permanently, because the same pair arrives on every later attempt.
 - **An activity's `measure` cannot change** once it exists. Its records are shaped by it, and the
   goal's unit means something different under each. Archive and add a new one instead.
 - **`activity-tint` never shares an element with `panel`.** The tint sets `background-color`, so

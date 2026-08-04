@@ -250,14 +250,36 @@ describe('importJson', () => {
     expect((await db.entries.get('entry-1'))?.endedAt).toBe(OPEN_ENTRY_END)
   })
 
-  it('refuses an import that would leave two timers open for one activity', async () => {
-    await db.entries.add(entry({ id: 'local-open', endedAt: OPEN_ENTRY_END }))
+  // Refusing the batch would wedge sync permanently: the same pair arrives on every later
+  // attempt. The later start stays open and the earlier one is closed where it began.
+  it('closes the earlier timer when an import would leave two open for one activity', async () => {
+    await db.entries.add(entry({ id: 'local-open', startedAt: T0, endedAt: OPEN_ENTRY_END }))
 
-    await expect(
-      importJson(file({ entries: [{ ...entry(), id: 'imported-open', endedAt: null }] as never })),
-    ).rejects.toThrow(/already running here/)
+    await importJson(
+      file({
+        entries: [
+          { ...entry(), id: 'imported-open', startedAt: T0 + HOUR, endedAt: null },
+        ] as never,
+      }),
+    )
 
-    expect(await db.entries.count()).toBe(1)
+    expect((await db.entries.get('local-open'))?.endedAt).toBe(T0 + HOUR)
+    expect((await db.entries.get('imported-open'))?.endedAt).toBe(OPEN_ENTRY_END)
+  })
+
+  // Identical starts leave no interval to close, and an entry may not end when it begins.
+  it('tombstones the duplicate when two open timers share a start instant', async () => {
+    await db.entries.add(entry({ id: 'local-open', startedAt: T0, endedAt: OPEN_ENTRY_END }))
+
+    await importJson(
+      file({
+        entries: [{ ...entry(), id: 'imported-open', startedAt: T0, endedAt: null }] as never,
+      }),
+    )
+
+    const local = await db.entries.get('local-open')
+    expect(local?.deletedAt).not.toBe(NOT_DELETED)
+    expect((await db.entries.get('imported-open'))?.endedAt).toBe(OPEN_ENTRY_END)
   })
 
   it('allows an open entry to replace the one it is a backup of', async () => {

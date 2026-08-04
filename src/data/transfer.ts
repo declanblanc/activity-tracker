@@ -190,10 +190,15 @@ export async function importJson(text: string): Promise<ImportResult> {
     const entries = await resolve(file.entries.map(toStoredEntry), db.entries)
     const completions = await resolve(file.completions.map(toStoredCompletion), db.completions)
 
-    await assertOneOpenEntryPerActivity(entries)
+    const corrected = await resolveDuplicateOpenEntries(entries)
+
+    // `corrected` is applied over `entries` rather than beside it: a record can appear in both,
+    // and the closure has to be the version that lands.
+    const toWrite = new Map(entries.map((entry) => [entry.id, entry]))
+    for (const entry of corrected) toWrite.set(entry.id, entry)
 
     await db.activities.bulkPut(activities)
-    await db.entries.bulkPut(entries)
+    await db.entries.bulkPut([...toWrite.values()])
     await db.completions.bulkPut(completions)
     return {
       activities: activities.length,
@@ -216,12 +221,22 @@ async function resolve<T extends { id: string; updatedAt: number }>(
 }
 
 /**
- * Entries are closed, never reopened, and exactly one may be open per activity. An import
- * that would leave two open — a backup taken while a timer ran, restored onto a device
- * running a different timer for the same activity — is refused whole rather than silently
- * closing one of them.
+ * Entries are closed, never reopened, and exactly one may be open per activity. A merge can
+ * arrive with two open for one activity — two devices each started the same timer while
+ * offline — so this restores the invariant instead of refusing the batch.
+ *
+ * Refusing was the earlier behaviour, and it is the wrong one for sync: the rejected pair is
+ * still there on the next attempt, so a single duplicated timer would wedge syncing forever.
+ * The latest start stays open and each earlier one is closed where the next began, which keeps
+ * the time they recorded rather than discarding it.
+ *
+ * Every correction restamps `updatedAt`, which is what makes the fix converge — it has to beat
+ * the still-open copy on whichever device has not merged yet.
+ *
+ * Returns the corrected records to write alongside the incoming ones, because a loser can be a
+ * record already stored here rather than one that just arrived.
  */
-async function assertOneOpenEntryPerActivity(incoming: Entry[]): Promise<void> {
+async function resolveDuplicateOpenEntries(incoming: Entry[]): Promise<Entry[]> {
   const stored = await db.entries.where('endedAt').equals(OPEN_ENTRY_END).toArray()
   const openAfterImport = new Map(stored.filter(isLive).map((entry) => [entry.id, entry]))
 
@@ -232,16 +247,33 @@ async function assertOneOpenEntryPerActivity(incoming: Entry[]): Promise<void> {
     else openAfterImport.delete(entry.id)
   }
 
-  const activities = new Set<string>()
+  const openByActivity = new Map<string, Entry[]>()
   for (const entry of openAfterImport.values()) {
-    if (activities.has(entry.activityId)) {
-      throw new Error(
-        'This backup has a running timer for an activity that is already running here. ' +
-          'Stop the timer and import again.',
+    const open = openByActivity.get(entry.activityId) ?? []
+    open.push(entry)
+    openByActivity.set(entry.activityId, open)
+  }
+
+  const now = Date.now()
+  const corrected: Entry[] = []
+  for (const open of openByActivity.values()) {
+    if (open.length < 2) continue
+
+    const byStart = [...open].sort((a, b) => a.startedAt - b.startedAt)
+    for (let index = 0; index < byStart.length - 1; index += 1) {
+      const entry = byStart[index]
+      const nextStart = byStart[index + 1].startedAt
+      corrected.push(
+        nextStart > entry.startedAt
+          ? { ...entry, endedAt: nextStart, updatedAt: now }
+          // Identical starts leave no interval to close, and an entry may not end when it
+          // begins. Two timers started for one activity in the same millisecond are the same
+          // timer, so the duplicate becomes a tombstone instead.
+          : { ...entry, deletedAt: now, updatedAt: now },
       )
     }
-    activities.add(entry.activityId)
   }
+  return corrected
 }
 
 function toStoredActivity(activity: ExportedActivity): Activity {
