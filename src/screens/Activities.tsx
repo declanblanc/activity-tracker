@@ -1,6 +1,23 @@
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  rectSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { LayoutGrid, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowUpDown, LayoutGrid, Plus } from 'lucide-react'
+import { useState, type CSSProperties, type ReactNode } from 'react'
 import ActivityForm from '../components/ActivityForm.tsx'
 import { blankDraft, draftFrom, toInput, type Draft } from '../components/activityDraft.ts'
 import { CountCard, DurationCard } from '../components/ActivityCard.tsx'
@@ -110,6 +127,9 @@ export default function Activities() {
   const [draft, setDraft] = useState<{ draft: Draft; id?: string } | null>(null)
   const [openId, setOpenId] = useState<string | null>(null)
   const [showArchived, setShowArchived] = useState(false)
+  // Reorder mode: a card only becomes a drag handle here, so an everyday tap on a timer or a
+  // check-off is never mistaken for the start of a drag.
+  const [editing, setEditing] = useState(false)
   // A deadline rather than a timer: `now` already ticks this screen, so it can retire the toast
   // too, and there is no interval to own or clean up.
   const [toast, setToast] = useState<{
@@ -250,16 +270,91 @@ export default function Activities() {
   const openActivity = activities.find((activity) => activity.id === openId)
   const openIndex = visible.findIndex((activity) => activity.id === openId)
 
+  // Two zones, timers above check-offs. The split is the whole gap fix: a timed card has no heat
+  // strip and a check-off card does, so mixing them in one grid left every short card with dead
+  // space beneath it. Grouped, each zone holds one card height and packs flush. The lead
+  // `measure` picks the card, exactly as the single grid did.
+  const timers = visible.filter((activity) => activity.measure === 'duration')
+  const checkoffs = visible.filter((activity) => activity.measure === 'count')
+  const bothZones = timers.length > 0 && checkoffs.length > 0
+  // Never leave a card stuck as a drag handle: if the list shrinks to one while editing, the
+  // Reorder toggle is gone, so reorder mode has to switch itself off or that card is uninteractable.
+  const reordering = editing && visible.length > 1
+
+  /** One card, chosen by the activity's lead measure. */
+  const renderCard = (activity: Activity): ReactNode => {
+    const stats = summarise(activity)
+    const startedAt = startedAtByActivity.get(activity.id)
+    // A running card with no recorded block treats its own stretch as one, so a timer left open
+    // across cleared storage still reads sensibly.
+    const blockStart = blockStartedAt[activity.id] ?? startedAt
+    const shared = { activity, onOpen: () => setOpenId(activity.id) }
+
+    return activity.measure === 'count' ? (
+      <CountCard
+        {...shared}
+        amounts={stats.amounts}
+        today={today}
+        onToggleDay={(dayKey) => void toggleCompletion(activity.id, dayKey)}
+        thisWeek={stats.thisWeek}
+        streak={stats.streak}
+        total={stats.total}
+        onToggleToday={() => void toggleCompletion(activity.id, today)}
+      />
+    ) : (
+      <DurationCard
+        {...shared}
+        startedAt={startedAt}
+        blockBefore={blockBefore(entries, activity.id, blockStart, startedAt, now)}
+        inBlock={blockStart !== undefined}
+        todayTotal={dayTotals.perActivity.get(activity.id) ?? 0}
+        thisWeek={stats.thisWeek}
+        streak={stats.streak}
+        total={stats.total}
+        onStart={() => void startOrResume(activity.id)}
+        onPause={() => void pause(activity.id)}
+        onStop={() => void stop(activity.id)}
+      />
+    )
+  }
+
+  /**
+   * Persist a zone's new order without disturbing the other zone or any hidden card.
+   *
+   * The drag reorders one zone's ids; this drops them back into the slots that zone already
+   * held in the global order, leaving every non-member — the other zone, and archived cards when
+   * they are hidden — exactly where it was. Same move `move()` makes for the up/down buttons.
+   */
+  const persistZoneOrder = (zoneOrder: string[]) => {
+    const inZone = new Set(zoneOrder)
+    let next = 0
+    const order = activities.map((activity) => (inZone.has(activity.id) ? zoneOrder[next++] : activity.id))
+    return reorderActivities(order)
+  }
+
   return (
-    <section className="screen-pad mx-auto w-full max-w-3xl">
+    <section className="screen-pad mx-auto w-full max-w-3xl lg:max-w-5xl xl:max-w-6xl">
       <header className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold text-ink">Activities</h1>
-        {/* Adding an activity happens once a month; logging one happens all day. This is
-            deliberately not the loudest thing on the screen. */}
-        <Button onClick={() => setDraft({ draft: blankDraft(nextColor(activities.length)) })}>
-          <Plus className="size-4" aria-hidden />
-          Add activity
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Nothing to reorder with one card, and the toggle would only be a dead control. */}
+          {visible.length > 1 && (
+            <Button
+              variant="ghost"
+              aria-pressed={editing}
+              onClick={() => setEditing((on) => !on)}
+            >
+              <ArrowUpDown className="size-4" aria-hidden />
+              {editing ? 'Done' : 'Reorder'}
+            </Button>
+          )}
+          {/* Adding an activity happens once a month; logging one happens all day. This is
+              deliberately not the loudest thing on the screen. */}
+          <Button onClick={() => setDraft({ draft: blankDraft(nextColor(activities.length)) })}>
+            <Plus className="size-4" aria-hidden />
+            Add activity
+          </Button>
+        </div>
       </header>
 
       {/* Coverage of the day, and so only meaningful when something is timed: a check-off
@@ -285,50 +380,30 @@ export default function Activities() {
         </EmptyState>
       )}
 
-      {/* `items-start`: a timed card carries no heat strip and so is much shorter than a check-off
-          card. Without it the grid row would stretch it to match its tallest neighbour. */}
-      <div className="mt-3 grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(20rem,100%),1fr))]">
-        {visible.map((activity) => {
-          const stats = summarise(activity)
-          const startedAt = startedAtByActivity.get(activity.id)
-          // A running card with no recorded block treats its own stretch as one, so a timer
-          // left open across cleared storage still reads sensibly.
-          const blockStart = blockStartedAt[activity.id] ?? startedAt
-          const shared = {
-            activity,
-            onOpen: () => setOpenId(activity.id),
-          }
-
-          return activity.measure === 'count' ? (
-            <CountCard
-              key={activity.id}
-              {...shared}
-              amounts={stats.amounts}
-              today={today}
-              onToggleDay={(dayKey) => void toggleCompletion(activity.id, dayKey)}
-              thisWeek={stats.thisWeek}
-              streak={stats.streak}
-              total={stats.total}
-              onToggleToday={() => void toggleCompletion(activity.id, today)}
-            />
-          ) : (
-            <DurationCard
-              key={activity.id}
-              {...shared}
-              startedAt={startedAt}
-              blockBefore={blockBefore(entries, activity.id, blockStart, startedAt, now)}
-              inBlock={blockStart !== undefined}
-              todayTotal={dayTotals.perActivity.get(activity.id) ?? 0}
-              thisWeek={stats.thisWeek}
-              streak={stats.streak}
-              total={stats.total}
-              onStart={() => void startOrResume(activity.id)}
-              onPause={() => void pause(activity.id)}
-              onStop={() => void stop(activity.id)}
-            />
-          )
-        })}
-      </div>
+      {/* Headings only earn their space when there are two zones to tell apart; a single-kind
+          list needs no label above it. */}
+      {timers.length > 0 && (
+        <>
+          {bothZones && <ZoneHeading>Timers</ZoneHeading>}
+          <ActivityZone
+            activities={timers}
+            editing={reordering}
+            onReorder={persistZoneOrder}
+            renderCard={renderCard}
+          />
+        </>
+      )}
+      {checkoffs.length > 0 && (
+        <>
+          {bothZones && <ZoneHeading>Habits</ZoneHeading>}
+          <ActivityZone
+            activities={checkoffs}
+            editing={reordering}
+            onReorder={persistZoneOrder}
+            renderCard={renderCard}
+          />
+        </>
+      )}
 
       {archivedCount > 0 && (
         <Button
@@ -527,6 +602,117 @@ function summariseActivity(
   return { amounts, gridAmounts, thisPeriod, thisWeek, streak: current, longest, total, trackedTime }
 }
 
+/** The eyebrow that titles a zone, matching the day-summary panel's own label. */
+function ZoneHeading({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="mt-6 mb-1 text-2xs font-semibold tracking-widest text-ink-muted uppercase">
+      {children}
+    </h2>
+  )
+}
+
+/**
+ * One zone of same-height cards, reorderable by drag while `editing`.
+ *
+ * Its own `DndContext` pens a drag inside the zone: a timer can never be dragged in among the
+ * check-offs, which is right — the lead measure, not a position, decides which card an activity
+ * wears. `rectSortingStrategy` is the grid-aware one, so the cards reflow across rows as one moves.
+ * The grid template is the same one the dashboard has always used; only the parent's width cap
+ * changed, which is what lets it fan out to three columns on a desktop.
+ */
+function ActivityZone({
+  activities,
+  editing,
+  onReorder,
+  renderCard,
+}: {
+  activities: Activity[]
+  editing: boolean
+  onReorder: (orderedIds: string[]) => void
+  renderCard: (activity: Activity) => ReactNode
+}) {
+  const sensors = useSensors(
+    // A few pixels of travel before a drag starts, so a press meant as a tap does not jump.
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+  const ids = activities.map((activity) => activity.id)
+
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over || active.id === over.id) return
+    const from = ids.indexOf(active.id as string)
+    const to = ids.indexOf(over.id as string)
+    if (from !== -1 && to !== -1) onReorder(arrayMove(ids, from, to))
+  }
+
+  return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={ids} strategy={rectSortingStrategy}>
+        <div className="mt-3 grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(20rem,100%),1fr))]">
+          {activities.map((activity) => (
+            <SortableCard key={activity.id} id={activity.id} editing={editing}>
+              {renderCard(activity)}
+            </SortableCard>
+          ))}
+        </div>
+      </SortableContext>
+    </DndContext>
+  )
+}
+
+/**
+ * A card in its sortable slot. Outside reorder mode it is an ordinary card. Inside it, the whole
+ * card becomes the drag handle and its own controls go `inert`, so a press starts a drag rather
+ * than toggling a day or a timer — which is the reason reordering is a mode and not always on.
+ * Works with mouse, touch and keyboard.
+ */
+function SortableCard({
+  id,
+  editing,
+  children,
+}: {
+  id: string
+  editing: boolean
+  children: ReactNode
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: !editing,
+  })
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : undefined,
+  }
+
+  if (!editing) {
+    return (
+      <div ref={setNodeRef} style={style}>
+        {children}
+      </div>
+    )
+  }
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <div
+        {...attributes}
+        {...listeners}
+        // `touch-none` so a touch-drag reorders the card instead of scrolling the page under it.
+        className={`focus-ring touch-none rounded-2xl ${
+          isDragging ? 'cursor-grabbing opacity-80 shadow-lg shadow-black/40' : 'cursor-grab'
+        }`}
+      >
+        {/* `inert` lifts the card's own buttons out of pointer, focus and the a11y tree while it
+            is a handle; the class also drops them from the pointer path so the press lands here. */}
+        <div className="pointer-events-none" inert>
+          {children}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /**
  * The day so far: how much of it is accounted for at all.
  *
@@ -540,15 +726,24 @@ function summariseActivity(
  */
 function DaySummary({ day, running }: { day: PeriodTotals; running: number }) {
   return (
-    <div className="panel mt-3 p-4">
-      <p className="text-2xs font-semibold tracking-widest text-ink-muted uppercase">
-        Tracked today
-      </p>
-      <p className="mt-1 text-3xl font-semibold tracking-tight text-ink tabular-nums">
-        {formatDuration(day.tracked)}
-      </p>
-      <Meter fraction={day.length > 0 ? day.tracked / day.length : 0} />
-      <p className="mt-2 text-xs text-ink-muted">
+    // Stacked on a phone; a horizontal strip from `md` up, where the coverage bar takes the
+    // surplus width rather than the panel being stretched around a short one.
+    <div className="panel mt-3 p-4 md:flex md:items-center md:gap-6">
+      <div className="md:shrink-0">
+        <p className="text-2xs font-semibold tracking-widest text-ink-muted uppercase">
+          Tracked today
+        </p>
+        <p className="mt-1 text-3xl font-semibold tracking-tight text-ink tabular-nums">
+          {formatDuration(day.tracked)}
+        </p>
+      </div>
+      {/* `!` overrides the `mt-2` baked into Meter: it wants a top gap when stacked and none
+          when it sits in the row. */}
+      <Meter
+        fraction={day.length > 0 ? day.tracked / day.length : 0}
+        className="!mt-2 md:!mt-0 md:flex-1"
+      />
+      <p className="mt-2 text-xs text-ink-muted md:mt-0 md:shrink-0 md:whitespace-nowrap">
         {formatDuration(day.untracked)} untracked of {formatDuration(day.length)} so far
         {running > 0 && ` · ${running} running`}
       </p>
