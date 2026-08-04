@@ -192,7 +192,7 @@ export default function Settings() {
       <Section title="App">
         <p className="text-sm text-ink-muted">
           The app is cached on this device and works with no network. Updates install in the
-          background; when one is ready a bar offers to reload.
+          background and take over the next time you open the app.
         </p>
         <div className="mt-3">
           <Button onClick={() => void run('app', checkForUpdate)} disabled={busy}>

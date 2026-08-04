@@ -5,13 +5,19 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 /**
- * The short commit SHA, e.g. `a1b2c3d`. It is the whole version the app shows: it moves on
- * every commit, so every push to main is a distinct build with nothing to remember to bump.
- * Falls back to `dev` when there is no git checkout (a source-tarball build).
+ * The build's commit — its short SHA and the date and time it was made, e.g.
+ * `a1b2c3d · 2026-08-04 08:26`. The SHA moves on every commit, so every push to main is a
+ * distinct build with nothing to remember to bump; the timestamp says when that build's commit
+ * landed. The date is rendered in the commit's own recorded timezone. Falls back to `dev` when
+ * there is no git checkout (a source-tarball build).
  */
 function appVersion(): string {
   try {
-    return execSync('git rev-parse --short HEAD').toString().trim()
+    const sha = execSync('git rev-parse --short HEAD').toString().trim()
+    const date = execSync("git show -s --format=%cd --date=format:'%Y-%m-%d %H:%M' HEAD")
+      .toString()
+      .trim()
+    return `${sha} · ${date}`
   } catch {
     return 'dev'
   }
