@@ -2,4 +2,5 @@ node_modules/
 dist/
 dev-dist/
 coverage/
+.wrangler/
 .DS_Store

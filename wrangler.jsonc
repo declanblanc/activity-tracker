@@ -1,0 +1,19 @@
+{
+  "name": "activity-tracker",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-08-03",
+  "assets": {
+    "directory": "./dist",
+    // BrowserRouter deep links (/insights, /activities) must serve the shell, not a 404.
+    "not_found_handling": "single-page-application",
+    // Without this, the SPA fallback above would swallow /api/* and return index.html.
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "activity-tracker",
+      "database_id": "19b24fe8-2d67-4720-a678-2d24be810e23"
+    }
+  ]
+}
