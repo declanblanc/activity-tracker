@@ -8,8 +8,13 @@ day, and what you want to see is a wall of filled squares and a streak.
 Other things you want the **hours** for: deep work, sleep, a fast. You flip a timer on and off,
 possibly several at once, and what you want to see is where the day went.
 
-This tracks both, side by side, on one screen. No account, no server, no subscription — it is an
-installable PWA and everything stays on the device.
+This tracks both, side by side, on one screen. No account and no subscription — it is an
+installable PWA that reads and writes a local database, so every screen works with no network.
+
+There is a server, but only as a courier. Optional cloud sync keeps a copy of the database on a
+Cloudflare Worker so it survives a cleared cache and reaches a second device; paste one shared
+token into Settings on each device to turn it on. The local database stays the source every screen
+reads. See [DEPLOY.md](DEPLOY.md).
 
 ## Running it
 

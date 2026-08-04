@@ -2,6 +2,7 @@ import { BarChart3, CalendarDays, LayoutGrid, Settings2 } from 'lucide-react'
 import { lazy, Suspense, type ComponentType, type ReactElement } from 'react'
 import { NavLink, Route, Routes } from 'react-router'
 import ForgottenPrompt from './components/ForgottenPrompt.tsx'
+import SyncAgent from './components/SyncAgent.tsx'
 import UpdatePrompt from './components/UpdatePrompt.tsx'
 import Activities from './screens/Activities.tsx'
 import Settings from './screens/Settings.tsx'
@@ -79,6 +80,8 @@ export default function App() {
           app happens to open on. */}
       <ForgottenPrompt />
       <UpdatePrompt />
+      {/* Renders nothing. Mounted here so sync runs on whichever screen the app opens on. */}
+      <SyncAgent />
     </div>
   )
 }

@@ -40,6 +40,15 @@ type Prefs = {
    * activity's own sheet can already edit.
    */
   resumableBlockStartedAt: Record<string, number>
+  /**
+   * The shared secret the sync API checks, pasted in once per device. Empty means sync is off.
+   *
+   * Device-local like everything else here, and that is the point rather than an accident: it is
+   * the one value that must never travel inside the synced blob.
+   */
+  syncToken: string
+  /** Epoch ms of the last successful sync, on the server's clock; 0 = never. Display only. */
+  lastSyncAt: number
 }
 
 const DEFAULTS: Prefs = {
@@ -47,6 +56,8 @@ const DEFAULTS: Prefs = {
   forgottenPromptSnoozedUntil: 0,
   blockStartedAt: {},
   resumableBlockStartedAt: {},
+  syncToken: '',
+  lastSyncAt: 0,
 }
 
 const storageKey = (key: keyof Prefs) => `activity-tracker.${key}`

@@ -62,6 +62,11 @@ These are the ones that look wrong until you know why. All are settled decisions
   closes each earlier one where the next began — restamping `updatedAt`, which is what makes the
   fix win on the device that has not merged yet. Throwing instead (the earlier behaviour) wedges
   sync permanently, because the same pair arrives on every later attempt.
+- **Sync is a whole-database blob, and the server never parses it.** `sync.ts` downloads the
+  blob, hands it to `importJson` — whose `winner()` already resolves last-write-wins per record —
+  and uploads the merged export. There is no watermark and no server-side schema, so a new field
+  on a type needs no migration. `syncToken` is device-local on purpose: it is the one value that
+  must never travel inside the blob.
 - **An activity's `measure` cannot change** once it exists. Its records are shaped by it, and the
   goal's unit means something different under each. Archive and add a new one instead.
 - **`activity-tint` never shares an element with `panel`.** The tint sets `background-color`, so

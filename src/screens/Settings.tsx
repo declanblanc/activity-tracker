@@ -8,38 +8,65 @@
  */
 import { useRef, useState } from 'react'
 import Button from '../components/ui/Button.tsx'
+import { getPref, setPref } from '../data/prefs.ts'
+import { syncNow } from '../data/sync.ts'
 import { exportCsv, exportJson, importJson } from '../data/transfer.ts'
 import { toDateTimeInput } from '../lib/time.ts'
 
-type Status = { tone: 'ok' | 'error'; message: string } | null
+/**
+ * One status line at a time, tagged with the section that produced it. Without `section` a sync
+ * failure reports itself under the Data buttons, which is where the reader is not looking.
+ */
+type Section = 'data' | 'app' | 'sync'
+type Status = { tone: 'ok' | 'error'; message: string; section: Section } | null
 
 export default function Settings() {
   const [status, setStatus] = useState<Status>(null)
   const [busy, setBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const [token, setToken] = useState(() => getPref('syncToken'))
+  // Held in state rather than read on each render, so a sync started here updates the line
+  // beneath it. `SyncAgent`'s background runs are not reflected until the screen is reopened,
+  // which is the whole cost of not putting a device setting into Dexie.
+  const [lastSyncAt, setLastSyncAt] = useState(() => getPref('lastSyncAt'))
 
   /** Every button here can fail on a full disk or a bad file; none may leave the screen stuck. */
-  async function run(job: () => Promise<string>) {
+  async function run(section: Section, job: () => Promise<string>) {
     setBusy(true)
     setStatus(null)
     try {
-      setStatus({ tone: 'ok', message: await job() })
+      setStatus({ tone: 'ok', message: await job(), section })
     } catch (error) {
-      setStatus({ tone: 'error', message: (error as Error).message })
+      setStatus({ tone: 'error', message: (error as Error).message, section })
     } finally {
       setBusy(false)
     }
   }
 
   const exportFile = (extension: 'json' | 'csv', type: string, build: () => Promise<string>) =>
-    run(async () => {
+    run('data', async () => {
       const name = `activity-tracker-${toDateTimeInput(Date.now()).slice(0, 10)}.${extension}`
       download(name, await build(), type)
       return `Saved ${name}.`
     })
 
+  const saveToken = () =>
+    void run('sync', async () => {
+      setPref('syncToken', token.trim())
+      setToken(token.trim())
+      return token.trim().length === 0 ? 'Sync turned off on this device.' : 'Sync token saved.'
+    })
+
+  /** Saves first, so "Sync now" works on a token that was typed but not yet saved. */
+  async function syncAndReport(): Promise<string> {
+    setPref('syncToken', token.trim())
+    const { syncedAt } = await syncNow()
+    setLastSyncAt(syncedAt)
+    return 'Synced.'
+  }
+
   async function importFile(file: File) {
-    await run(async () => {
+    await run('data', async () => {
       const { activities, entries, completions } = await importJson(await file.text())
       return (
         `Imported ${activities} ${plural(activities, 'activity', 'activities')}, ` +
@@ -58,8 +85,8 @@ export default function Settings() {
 
       <Section title="Data">
         <p className="text-sm text-ink-muted">
-          Everything is stored on this device. A JSON backup restores exactly what you export,
-          deletions included; the CSV is for a spreadsheet and cannot be imported back.
+          A JSON backup restores exactly what you export, deletions included; the CSV is for a
+          spreadsheet and cannot be imported back.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button onClick={() => exportFile('json', 'application/json', exportJson)} disabled={busy}>
@@ -82,14 +109,7 @@ export default function Settings() {
             if (file) void importFile(file)
           }}
         />
-        {status && (
-          <p
-            role="status"
-            className={`mt-3 text-sm ${status.tone === 'error' ? 'text-danger' : 'text-positive'}`}
-          >
-            {status.message}
-          </p>
-        )}
+        <StatusLine status={status} section="data" />
       </Section>
 
       <Section title="App">
@@ -98,16 +118,46 @@ export default function Settings() {
           background; when one is ready a bar offers to reload.
         </p>
         <div className="mt-3">
-          <Button onClick={() => void run(checkForUpdate)} disabled={busy}>
+          <Button onClick={() => void run('app', checkForUpdate)} disabled={busy}>
             Check for updates
           </Button>
         </div>
+        <StatusLine status={status} section="app" />
       </Section>
 
       <Section title="Sync">
         <p className="text-sm text-ink-muted">
-          Syncing across devices is off. There is no account and nothing leaves this device.
+          Paste the same sync token on every device to keep them in step. There is no account and
+          no password — the token is the whole of it, it is stored on this device only, and it
+          never travels with your data.
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            // A secret, so it is not left legible on a screen someone else can see. Pasting into
+            // a password field still works everywhere.
+            type="password"
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            aria-label="Sync token"
+            placeholder="Sync token"
+            className="min-w-48 flex-1 rounded-lg bg-raised px-3 py-2 text-ink focus-ring"
+          />
+          <Button onClick={saveToken} disabled={busy}>
+            Save token
+          </Button>
+          <Button
+            onClick={() => void run('sync', syncAndReport)}
+            disabled={busy || token.length === 0}
+          >
+            Sync now
+          </Button>
+        </div>
+        <p className="mt-3 text-sm text-ink-muted">
+          {lastSyncAt === 0
+            ? 'Never synced from this device.'
+            : `Last synced ${toDateTimeInput(lastSyncAt).replace('T', ' ')}.`}
+        </p>
+        <StatusLine status={status} section="sync" />
       </Section>
     </section>
   )
@@ -144,6 +194,20 @@ function download(name: string, text: string, type: string): void {
 }
 
 const plural = (count: number, one: string, many: string) => (count === 1 ? one : many)
+
+/** The outcome of the last button pressed, shown under the section whose button it was. */
+function StatusLine({ status, section }: { status: Status; section: Section }) {
+  if (!status || status.section !== section) return null
+
+  return (
+    <p
+      role="status"
+      className={`mt-3 text-sm ${status.tone === 'error' ? 'text-danger' : 'text-positive'}`}
+    >
+      {status.message}
+    </p>
+  )
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
