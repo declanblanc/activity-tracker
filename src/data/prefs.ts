@@ -15,6 +15,8 @@ import type { Period } from './types.ts'
 /** The complete list of persisted device state. */
 type Prefs = {
   insightsScale: Period
+  /** Activities screen: drop each card's heat strip so more fit on one page. */
+  compactActivities: boolean
   /** Epoch ms; 0 = not snoozed. */
   forgottenPromptSnoozedUntil: number
   /**
@@ -53,6 +55,7 @@ type Prefs = {
 
 const DEFAULTS: Prefs = {
   insightsScale: 'day',
+  compactActivities: false,
   forgottenPromptSnoozedUntil: 0,
   blockStartedAt: {},
   resumableBlockStartedAt: {},

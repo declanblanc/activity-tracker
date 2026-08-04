@@ -16,7 +16,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { ArrowUpDown, LayoutGrid, Plus } from 'lucide-react'
+import { ArrowUpDown, LayoutGrid, Plus, Rows3 } from 'lucide-react'
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import ActivityForm from '../components/ActivityForm.tsx'
 import { blankDraft, draftFrom, toInput, type Draft } from '../components/activityDraft.ts'
@@ -41,7 +41,7 @@ import {
   startActivity,
   stopActivity,
 } from '../data/entries.ts'
-import { getPref, setActivityStamp } from '../data/prefs.ts'
+import { getPref, setActivityStamp, setPref } from '../data/prefs.ts'
 import {
   OPEN_ENTRY_END,
   type Activity,
@@ -130,6 +130,9 @@ export default function Activities() {
   // Reorder mode: a card only becomes a drag handle here, so an everyday tap on a timer or a
   // check-off is never mistaken for the start of a drag.
   const [editing, setEditing] = useState(false)
+  // Device setting, mirrored like the block markers: this is the only screen that reads it, so a
+  // reactive store would buy nothing.
+  const [compact, setCompact] = useState(() => getPref('compactActivities'))
   // A deadline rather than a timer: `now` already ticks this screen, so it can retire the toast
   // too, and there is no interval to own or clean up.
   const [toast, setToast] = useState<{
@@ -295,6 +298,7 @@ export default function Activities() {
         {...shared}
         amounts={stats.amounts}
         today={today}
+        compact={compact}
         onToggleDay={(dayKey) => void toggleCompletion(activity.id, dayKey)}
         thisWeek={stats.thisWeek}
         streak={stats.streak}
@@ -337,6 +341,22 @@ export default function Activities() {
       <header className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold text-ink">Activities</h1>
         <div className="flex items-center gap-2">
+          {/* Only worth offering once a strip is actually taking up room to reclaim. */}
+          {checkoffs.length > 0 && (
+            <Button
+              variant="ghost"
+              aria-pressed={compact}
+              onClick={() => {
+                setCompact((on) => {
+                  setPref('compactActivities', !on)
+                  return !on
+                })
+              }}
+            >
+              <Rows3 className="size-4" aria-hidden />
+              {compact ? 'Expand' : 'Compact'}
+            </Button>
+          )}
           {/* Nothing to reorder with one card, and the toggle would only be a dead control. */}
           {visible.length > 1 && (
             <Button
@@ -388,6 +408,7 @@ export default function Activities() {
           <ActivityZone
             activities={timers}
             editing={reordering}
+            compact={compact}
             onReorder={persistZoneOrder}
             renderCard={renderCard}
           />
@@ -399,6 +420,7 @@ export default function Activities() {
           <ActivityZone
             activities={checkoffs}
             editing={reordering}
+            compact={compact}
             onReorder={persistZoneOrder}
             renderCard={renderCard}
           />
@@ -623,11 +645,13 @@ function ZoneHeading({ children }: { children: ReactNode }) {
 function ActivityZone({
   activities,
   editing,
+  compact,
   onReorder,
   renderCard,
 }: {
   activities: Activity[]
   editing: boolean
+  compact: boolean
   onReorder: (orderedIds: string[]) => void
   renderCard: (activity: Activity) => ReactNode
 }) {
@@ -648,7 +672,14 @@ function ActivityZone({
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={ids} strategy={rectSortingStrategy}>
-        <div className="mt-3 grid items-start gap-4 [grid-template-columns:repeat(auto-fill,minmax(min(20rem,100%),1fr))]">
+        <div
+          className={`mt-3 grid items-start gap-4 ${
+            // A shorter card wants a narrower column too, so compact packs more across as well as down.
+            compact
+              ? '[grid-template-columns:repeat(auto-fill,minmax(min(15rem,100%),1fr))]'
+              : '[grid-template-columns:repeat(auto-fill,minmax(min(20rem,100%),1fr))]'
+          }`}
+        >
           {activities.map((activity) => (
             <SortableCard key={activity.id} id={activity.id} editing={editing}>
               {renderCard(activity)}

@@ -168,6 +168,7 @@ export function CountCard({
   thisWeek,
   streak,
   total,
+  compact = false,
   onToggleToday,
   onToggleDay,
   ...shared
@@ -179,6 +180,8 @@ export function CountCard({
   thisWeek: number
   streak: number
   total: number
+  /** Drop the heat strip so the card shrinks to its identity row, matching a timed card. */
+  compact?: boolean
   onToggleToday: () => void
   onToggleDay: (day: DateKey) => void
 }) {
@@ -209,16 +212,18 @@ export function CountCard({
         </button>
       }
     >
-      <div className="mt-3" ref={strip}>
-        <HeatGrid
-          color={activity.color}
-          amounts={amounts}
-          today={today}
-          weeks={weeks}
-          weeklyTarget={targetAt(activity, 'week') ?? undefined}
-          onDayActivate={activity.archived ? undefined : onToggleDay}
-        />
-      </div>
+      {!compact && (
+        <div className="mt-3" ref={strip}>
+          <HeatGrid
+            color={activity.color}
+            amounts={amounts}
+            today={today}
+            weeks={weeks}
+            weeklyTarget={targetAt(activity, 'week') ?? undefined}
+            onDayActivate={activity.archived ? undefined : onToggleDay}
+          />
+        </div>
+      )}
     </CardShell>
   )
 }
