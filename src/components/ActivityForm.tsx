@@ -127,13 +127,13 @@ export default function ActivityForm({
             min={counted ? 1 : 0}
             step={counted ? 1 : 0.25}
             inputMode={counted ? 'numeric' : 'decimal'}
-            aria-label={counted ? 'Days per period' : 'Hours per period'}
+            aria-label={counted ? 'Times per period' : 'Hours per period'}
             className={`${FIELD} mt-0 w-20`}
           />
           {/* `shrink-0` and no wrapping: without them the unit broke onto two lines and squeezed
               the period select down to its chevron. */}
           <span className="shrink-0 text-sm whitespace-nowrap text-ink-muted">
-            {unitLabel(counted, draft.targetAmount)} per
+            {counted ? 'per' : 'hours per'}
           </span>
           <select
             value={draft.targetPeriod}
@@ -230,12 +230,6 @@ function MeasureOption({
       {label}
     </button>
   )
-}
-
-/** The goal's unit, singular only when the amount is exactly one: "1 day per", "2 days per". */
-function unitLabel(counted: boolean, targetAmount: string): string {
-  const unit = counted ? 'day' : 'hour'
-  return Number(targetAmount) === 1 ? unit : `${unit}s`
 }
 
 /** What the chosen goal will actually do, in one line. */
