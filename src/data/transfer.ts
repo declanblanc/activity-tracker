@@ -208,6 +208,53 @@ export async function importJson(text: string): Promise<ImportResult> {
   })
 }
 
+/**
+ * Restore a backup as the source of truth, overwriting the database rather than merging into it.
+ *
+ * `importJson` keeps the newest copy of each record, which is what sync needs — but it means a
+ * backup can never bring back a record deleted after it was exported: the delete's tombstone is
+ * newer, so it wins the merge and the import is a silent no-op. Restore is for exactly that case.
+ * It clears the tables and writes the file with a fresh `updatedAt` on every record, so the backup
+ * beats any newer copy — a tombstone included — both here and on the next sync, and the account
+ * ends up matching the file.
+ *
+ * ponytail: a record that lives only in the cloud (never on this device, absent from the file)
+ * still returns on the next sync — the whole-database blob merge is a union and this clears only
+ * the local copy. Tombstoning every live record the file omits would close that gap; no caller
+ * needs it, and completions have no tombstone to give them, so it is left out.
+ */
+export async function restoreJson(text: string): Promise<ImportResult> {
+  const file = parseTransferFile(text)
+  // One instant across every record, so the whole restore wins last-write-wins as a unit.
+  const now = Date.now()
+  const restamp = <T extends { updatedAt: number }>(record: T): T => ({ ...record, updatedAt: now })
+
+  const activities = file.activities.map(toStoredActivity).map(restamp)
+  const entries = file.entries.map(toStoredEntry).map(restamp)
+  const completions = file.completions.map(toStoredCompletion).map(restamp)
+
+  return db.transaction('rw', db.activities, db.entries, db.completions, async () => {
+    await db.activities.clear()
+    await db.entries.clear()
+    await db.completions.clear()
+
+    // The one-open-entry-per-activity invariant still has to hold, so a backup taken mid-bug is
+    // reconciled the same way an import would reconcile it.
+    const corrected = await resolveDuplicateOpenEntries(entries)
+    const toWrite = new Map(entries.map((entry) => [entry.id, entry]))
+    for (const entry of corrected) toWrite.set(entry.id, entry)
+
+    await db.activities.bulkPut(activities)
+    await db.entries.bulkPut([...toWrite.values()])
+    await db.completions.bulkPut(completions)
+    return {
+      activities: activities.length,
+      entries: entries.length,
+      completions: completions.length,
+    }
+  })
+}
+
 /** Each incoming record, or the record already stored if that one is the LWW winner. */
 async function resolve<T extends { id: string; updatedAt: number }>(
   incoming: T[],

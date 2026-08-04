@@ -2,16 +2,16 @@
  * Settings.
  *
  * The Data section is the only way data leaves or enters the device: a JSON backup
- * that round-trips exactly, a CSV for a spreadsheet, and an import that either applies
- * whole or not at all. Everything it calls lives in `data/transfer.ts` — this screen
- * knows nothing about sentinels, formats or transactions.
+ * that round-trips exactly, a CSV for a spreadsheet, an import that merges a backup in,
+ * and a replace that overwrites everything with one. Everything it calls lives in
+ * `data/transfer.ts` — this screen knows nothing about sentinels, formats or transactions.
  */
 import { useRef, useState } from 'react'
 import Button from '../components/ui/Button.tsx'
 import { deleteAllData } from '../data/db.ts'
 import { getPref, setPref } from '../data/prefs.ts'
 import { syncNow } from '../data/sync.ts'
-import { exportCsv, exportJson, importJson } from '../data/transfer.ts'
+import { exportCsv, exportJson, importJson, restoreJson } from '../data/transfer.ts'
 import { toDateTimeInput } from '../lib/time.ts'
 
 /**
@@ -28,6 +28,7 @@ export default function Settings() {
   const [status, setStatus] = useState<Status>(null)
   const [busy, setBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const restoreInput = useRef<HTMLInputElement>(null)
   const [token, setToken] = useState(() => getPref('syncToken'))
   // Held in state rather than read on each render, so a sync started here updates the line
   // beneath it. `SyncAgent`'s background runs are not reflected until the screen is reopened,
@@ -87,6 +88,30 @@ export default function Settings() {
     if (fileInput.current) fileInput.current.value = ''
   }
 
+  /**
+   * Restore overwrites everything, so it is confirmed before it runs — a wrong file here loses
+   * whatever is on the device. Unlike import, this makes the backup win even over newer records,
+   * which is the point: it brings back anything deleted since the backup was taken.
+   */
+  async function restoreFile(file: File) {
+    const proceed = window.confirm(
+      `Replace ALL current data with “${file.name}”?\n\n` +
+        'Everything on this device is overwritten by the backup, and the change syncs to your ' +
+        'other devices. This cannot be undone.',
+    )
+    if (proceed) {
+      await run('data', async () => {
+        const { activities, entries, completions } = await restoreJson(await file.text())
+        return (
+          `Restored ${activities} ${plural(activities, 'activity', 'activities')}, ` +
+          `${entries} ${plural(entries, 'entry', 'entries')} and ` +
+          `${completions} ${plural(completions, 'check-off', 'check-offs')} from the backup.`
+        )
+      })
+    }
+    if (restoreInput.current) restoreInput.current.value = ''
+  }
+
   const deleteEverything = () =>
     void run('delete', async () => {
       await deleteAllData()
@@ -106,6 +131,12 @@ export default function Settings() {
           A JSON backup restores exactly what you export, deletions included; the CSV is for a
           spreadsheet and cannot be imported back.
         </p>
+        <p className="mt-2 text-sm text-ink-muted">
+          <strong className="font-medium text-ink-soft">Import</strong> merges a backup in, keeping
+          the newest copy of each record — so it will not bring back anything you deleted after the
+          backup was made. <strong className="font-medium text-ink-soft">Replace</strong> overwrites
+          everything with the backup instead, which does restore those deletions.
+        </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Button onClick={() => exportFile('json', 'application/json', exportJson)} disabled={busy}>
             Export JSON
@@ -116,6 +147,9 @@ export default function Settings() {
           <Button onClick={() => fileInput.current?.click()} disabled={busy}>
             Import JSON
           </Button>
+          <Button onClick={() => restoreInput.current?.click()} disabled={busy}>
+            Replace all data
+          </Button>
         </div>
         <input
           ref={fileInput}
@@ -125,6 +159,16 @@ export default function Settings() {
           onChange={(event) => {
             const file = event.target.files?.[0]
             if (file) void importFile(file)
+          }}
+        />
+        <input
+          ref={restoreInput}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) void restoreFile(file)
           }}
         />
         <StatusLine status={status} section="data" />

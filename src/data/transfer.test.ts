@@ -13,6 +13,7 @@ import {
   exportJson,
   importJson,
   parseTransferFile,
+  restoreJson,
   winner,
   type TransferFile,
 } from './transfer.ts'
@@ -453,5 +454,36 @@ describe('completions across the file boundary', () => {
     const rows = (await exportCsv()).split('\n').slice(1)
 
     expect(rows.map((row) => row.split(',')[0])).toEqual(['Stretch', 'Work'])
+  })
+})
+
+describe('restoreJson', () => {
+  it('brings back a record deleted after the backup was made', async () => {
+    // The account has the activity deleted, with a newer stamp than the backup — exactly the case
+    // where importJson keeps the tombstone and the backup is a silent no-op.
+    await db.activities.add(activity({ deletedAt: T0 + HOUR, updatedAt: T0 + HOUR }))
+
+    const before = Date.now()
+    await restoreJson(file())
+
+    const restored = await db.activities.get('activity-1')
+    expect(restored?.deletedAt).toBe(NOT_DELETED)
+    // Restamped to now, so the restore also beats the tombstone on the next sync, not only here.
+    expect(restored?.updatedAt).toBeGreaterThanOrEqual(before)
+    expect(restored?.updatedAt).toBeGreaterThan(T0 + HOUR)
+  })
+
+  it('drops a record the backup does not contain', async () => {
+    await db.activities.add(activity({ id: 'extra', name: 'Not in backup' }))
+
+    await restoreJson(file())
+
+    expect(await db.activities.get('extra')).toBeUndefined()
+    expect(await db.activities.count()).toBe(1)
+  })
+
+  it('reports how many of each record it wrote', async () => {
+    const result = await restoreJson(file({ completions: [completion()] }))
+    expect(result).toEqual({ activities: 1, entries: 1, completions: 1 })
   })
 })
