@@ -32,10 +32,12 @@ import {
   type DateKey,
   type Entry,
   type Period,
+  tracksCompletion,
+  tracksTime,
 } from '../data/types.ts'
 import { streaks, targetAt } from '../lib/accounting/goals.ts'
 import { periodTotals, totalSince, type PeriodTotals } from '../lib/accounting/totals.ts'
-import { dayAmounts, periodAmounts } from '../lib/days.ts'
+import { completionAmounts, dayAmounts, periodAmounts } from '../lib/days.ts'
 import { formatDuration } from '../lib/format.ts'
 import { nextColor } from '../lib/palette.ts'
 import { dayWindow, dayWindowsIn, periodWindow, trailingWindows } from '../lib/time.ts'
@@ -122,8 +124,8 @@ export default function Activities() {
   const visible = showArchived ? activities : activities.filter((activity) => !activity.archived)
   const archivedCount = activities.filter((activity) => activity.archived).length
   // Archived ones count: an activity archived at noon still tracked the morning, and the day's
-  // coverage has to account for it.
-  const anyTimed = activities.some((activity) => activity.measure === 'duration')
+  // coverage has to account for it. A hybrid check-off tracks time too, so it counts here.
+  const anyTimed = activities.some(tracksTime)
 
   const startedAtByActivity = new Map(
     openEntries.map((entry) => [entry.activityId, entry.startedAt]),
@@ -360,17 +362,18 @@ export default function Activities() {
             return (
               <ActivitySheet
                 activity={openActivity}
-                amounts={stats.amounts}
+                amounts={stats.gridAmounts}
                 today={today}
                 thisPeriod={stats.thisPeriod}
                 streak={stats.streak}
                 longest={stats.longest}
                 total={stats.total}
+                trackedTime={stats.trackedTime}
                 startedAt={startedAt}
                 blockBefore={blockBefore(entries, openActivity.id, blockStart, startedAt, now)}
                 inBlock={blockStart !== undefined}
                 entries={recentEntries(entries, openActivity.id)}
-                timedActivities={activities.filter((a) => a.measure === 'duration')}
+                timedActivities={activities.filter(tracksTime)}
                 now={now}
                 onDayActivate={(dayKey) => void toggleCompletion(openActivity.id, dayKey)}
                 onStart={() => void startOrResume(openActivity.id)}
@@ -419,7 +422,6 @@ export default function Activities() {
         {draft && (
           <ActivityForm
             initial={draft.draft}
-            editing={draft.id !== undefined}
             submitLabel={draft.id ? 'Save' : 'Add activity'}
             onSubmit={async (next) => {
               await saveActivity(toInput(next, draft.id))
@@ -466,6 +468,12 @@ function blockBefore(
 
 type ActivityStats = {
   amounts: Map<DateKey, number>
+  /**
+   * The contribution grid's amounts — the same as `amounts` for a check-off, but for a hybrid
+   * whose primary is a timer it is the check-offs, since `amounts` there is milliseconds. Empty
+   * for a plain timer, which draws no grid.
+   */
+  gridAmounts: Map<DateKey, number>
   /** Progress inside the current period of the activity's own target. */
   thisPeriod: number
   /** Progress inside the current week, for the card's weekly progress line. */
@@ -473,6 +481,8 @@ type ActivityStats = {
   streak: number
   longest: number
   total: number
+  /** Time tracked over the horizon — the secondary total a hybrid check-off shows beside its grid. */
+  trackedTime: number
 }
 
 /**
@@ -491,6 +501,16 @@ function summariseActivity(
   const days = horizon.flatMap((week) => dayWindowsIn(week))
   const amounts = dayAmounts(activity, entries, completions, days, now)
 
+  // The check-off grid's squares. When the check-off leads, `amounts` already is it; when the
+  // timer leads, `amounts` is milliseconds, so the squares come from the check-offs directly.
+  // Empty when the check-off axis is hidden, which is what stops the grid drawing at all.
+  const gridAmounts = !tracksCompletion(activity)
+    ? new Map<DateKey, number>()
+    : activity.measure === 'count'
+      ? amounts
+      : completionAmounts(activity.id, completions)
+  const trackedTime = totalSince(entries, activity.id, horizon[0].start, now)
+
   // With no target of its own an activity is streaked by the day against any amount at all,
   // which is what a filled square already means.
   const period = activity.targetPeriod ?? 'day'
@@ -507,7 +527,7 @@ function summariseActivity(
         completions.filter((row) => row.activityId === activity.id && row.done).length
       : [...amounts.values()].reduce((sum, amount) => sum + amount, 0)
 
-  return { amounts, thisPeriod, thisWeek, streak: current, longest, total }
+  return { amounts, gridAmounts, thisPeriod, thisWeek, streak: current, longest, total, trackedTime }
 }
 
 /**

@@ -11,7 +11,14 @@ import {
 } from 'lucide-react'
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { isOpen, type Activity, type DateKey, type Entry } from '../data/types.ts'
+import {
+  isOpen,
+  tracksCompletion,
+  tracksTime,
+  type Activity,
+  type DateKey,
+  type Entry,
+} from '../data/types.ts'
 import { targetAt } from '../lib/accounting/goals.ts'
 import { formatAmount, formatDuration, formatElapsed, formatTime } from '../lib/format.ts'
 import { useNow } from '../lib/useNow.ts'
@@ -51,6 +58,7 @@ export default function ActivitySheet({
   streak,
   longest,
   total,
+  trackedTime,
   startedAt,
   blockBefore,
   inBlock,
@@ -68,7 +76,10 @@ export default function ActivitySheet({
 }: {
   activity: Activity
   amounts: Map<DateKey, number>
-  /** This activity's own stretches, newest first and already capped. Empty for a check-off. */
+  /**
+   * This activity's own stretches, newest first and already capped. Empty for a plain check-off;
+   * a hybrid one that also runs a timer has its timed stretches here.
+   */
   entries: Entry[]
   /**
    * Every timed activity, for the entry form's own picker — which is what still allows an entry
@@ -82,6 +93,8 @@ export default function ActivitySheet({
   streak: number
   longest: number
   total: number
+  /** Time tracked over the horizon — shown beside a hybrid check-off's entry list. */
+  trackedTime: number
   startedAt?: number
   blockBefore: number
   inBlock: boolean
@@ -106,6 +119,10 @@ export default function ActivitySheet({
   // days for a check-off and time for a timer.
   const streakUnit = activity.targetPeriod === 'week' ? 'weeks' : 'days'
   const timed = activity.measure === 'duration'
+  // A hybrid shows both axes; a plain activity shows only its own. `timed` still governs how the
+  // primary total reads, `canTime`/`canCheck` govern which secondary blocks appear.
+  const canTime = tracksTime(activity)
+  const canCheck = tracksCompletion(activity)
 
   return (
     <div
@@ -134,8 +151,9 @@ export default function ActivitySheet({
       <GoalLine activity={activity} thisPeriod={thisPeriod} weeklyTarget={weeklyTarget} />
 
       {/* Running controls live here too, so a timer can be started from the sheet without
-          closing it first. */}
-      {timed && !activity.archived && (
+          closing it first. A hybrid check-off gets them as well — this is where its time is
+          logged, since its dashboard card stays a plain check-off. */}
+      {canTime && !activity.archived && (
         <div className="mt-4 flex items-center gap-2">
           <IconButton
             label={`${startedAt !== undefined ? 'Pause' : inBlock ? 'Resume' : 'Start'} ${activity.name}`}
@@ -180,29 +198,49 @@ export default function ActivitySheet({
         />
       </dl>
 
-      {/* How history is drawn is the one thing the two measures do not share. A check-off gets the
-          contribution grid; a timed activity gets its stretches as a list, because a square that
-          is merely on or off throws away the quantity. */}
-      {timed ? (
-        <EntryList
-          activity={activity}
-          entries={entries}
-          timedActivities={timedActivities}
-          now={now}
-        />
-      ) : (
-        <div className="mt-6">
-          <h3 className="mb-2 text-sm font-medium text-ink-muted">Past year</h3>
-          <HeatGrid
-            color={activity.color}
+      {/* How history is drawn is where the two axes part. A check-off gets the contribution grid;
+          a timer gets its stretches as a list, because a square that is merely on or off throws
+          away the quantity. A hybrid gets both, its primary axis first. */}
+      {activity.measure === 'count' ? (
+        <>
+          <HistoryGrid
+            activity={activity}
             amounts={amounts}
             today={today}
-            weeks={SHEET_WEEKS}
             weeklyTarget={weeklyTarget ?? undefined}
-            onDayActivate={activity.archived ? undefined : onDayActivate}
+            heading="Past year"
+            onDayActivate={onDayActivate}
           />
-          <p className="mt-2 text-2xs text-ink-muted">Tap any past day to fill it in or clear it.</p>
-        </div>
+          {canTime && (
+            <EntryList
+              activity={activity}
+              entries={entries}
+              timedActivities={timedActivities}
+              trackedTime={trackedTime}
+              now={now}
+            />
+          )}
+        </>
+      ) : (
+        <>
+          <EntryList
+            activity={activity}
+            entries={entries}
+            timedActivities={timedActivities}
+            now={now}
+          />
+          {canCheck && (
+            // No weekly target here: a hybrid timer's goal is in hours, which the days grid has
+            // nothing to score against — the squares are pure presence.
+            <HistoryGrid
+              activity={activity}
+              amounts={amounts}
+              today={today}
+              heading="Checked off"
+              onDayActivate={onDayActivate}
+            />
+          )}
+        </>
       )}
 
       <div className="mt-6">
@@ -254,6 +292,43 @@ export default function ActivitySheet({
 }
 
 /**
+ * The contribution grid, and the note that its squares are editable.
+ *
+ * Shared by a check-off's "Past year" and a hybrid timer's "Checked off": the same grid, the same
+ * tap-to-fill, differing only in heading and whether a weekly target shades the columns.
+ */
+function HistoryGrid({
+  activity,
+  amounts,
+  today,
+  weeklyTarget,
+  heading,
+  onDayActivate,
+}: {
+  activity: Activity
+  amounts: Map<DateKey, number>
+  today: DateKey
+  weeklyTarget?: number
+  heading: string
+  onDayActivate: (day: DateKey) => void
+}) {
+  return (
+    <div className="mt-6">
+      <h3 className="mb-2 text-sm font-medium text-ink-muted">{heading}</h3>
+      <HeatGrid
+        color={activity.color}
+        amounts={amounts}
+        today={today}
+        weeks={SHEET_WEEKS}
+        weeklyTarget={weeklyTarget}
+        onDayActivate={activity.archived ? undefined : onDayActivate}
+      />
+      <p className="mt-2 text-2xs text-ink-muted">Tap any past day to fill it in or clear it.</p>
+    </div>
+  )
+}
+
+/**
  * One timed activity's recorded stretches, newest first — and the place they get corrected.
  *
  * This is what the Log screen used to be, narrowed to one activity. What that screen could do and
@@ -272,11 +347,14 @@ function EntryList({
   activity,
   entries,
   timedActivities,
+  trackedTime,
   now,
 }: {
   activity: Activity
   entries: Entry[]
   timedActivities: Activity[]
+  /** Time over the horizon, shown in the header when this list is a hybrid's secondary axis. */
+  trackedTime?: number
   now: number
 }) {
   // Owned here rather than passed in: the sheet unmounts when it closes, which is what resets a
@@ -286,7 +364,12 @@ function EntryList({
   return (
     <div className="mt-6">
       <div className="mb-2 flex items-baseline gap-2">
-        <h3 className="flex-1 text-sm font-medium text-ink-muted">Recent</h3>
+        <h3 className="flex-1 text-sm font-medium text-ink-muted">
+          Recent
+          {trackedTime !== undefined && trackedTime > 0 && (
+            <span className="text-ink-soft tabular-nums"> · {formatDuration(trackedTime)}</span>
+          )}
+        </h3>
         {!activity.archived && (
           <Button
             variant="quiet"
