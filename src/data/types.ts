@@ -33,15 +33,17 @@ export type DateKey = string
 export type Period = 'day' | 'week' | 'month'
 
 /**
- * How an activity is recorded — the only field that changes what the rest of the app does
- * with one.
+ * Which axis an activity is *scored* on — the one the single goal, the streak, the "total" and
+ * the sheet's lead layout are about. Not what it stores (every activity can store both
+ * `Completion` rows and `Entry` intervals) and not what its card shows (`showCheckoff` /
+ * `showTimer` decide that, independently of this).
  *
- * - `duration` runs a timer and stores `Entry` intervals.
- * - `count` is checked off once per local day and stores `Completion` rows.
+ * - `count` scores the check-off, and its goal counts **days**.
+ * - `duration` scores the timer, and its goal counts **milliseconds**.
  *
- * Everything else — icon, colour, target, archive, order, soft delete, the heat grid, the
- * streak, the goals panel — is shared between them. That sharing is the whole point of
- * having one entity instead of two.
+ * `dayAmounts` branches on this one field and nowhere else, so everything downstream — streaks,
+ * the goals panel — sees one amount per day and stays axis-agnostic. `measure` *can* change: it
+ * shapes no stored record, so flipping it is safe (it clears a goal whose unit no longer applies).
  */
 export type Measure = 'count' | 'duration'
 
@@ -65,6 +67,19 @@ export type Activity = {
    */
   targetAmount?: number
   targetPeriod?: Period
+  /**
+   * Which axes this activity's *card* shows on the activity list: the check-off grid, the timer,
+   * or both. Display only, and only for the card — every activity can record both (the storage
+   * layer never guarded it), and its own sheet always shows both regardless of these. Both
+   * default on for a new activity; turning one off just hides that axis from the card. Decoupled
+   * from `measure`: the goal may be scored on an axis the card does not show.
+   *
+   * Optional so no stored record needs a migration: when absent, `tracksCompletion` /
+   * `tracksTime` fall back to `measure`, so an activity from before this existed shows exactly
+   * the single card axis it always did until it is next edited. See those helpers below.
+   */
+  showCheckoff?: boolean
+  showTimer?: boolean
   archived: boolean
   sortOrder: number
   createdAt: number
@@ -77,8 +92,7 @@ export type Activity = {
  * What a caller supplies to `saveActivity`. An absent `id` means insert; the fields the
  * data layer owns (`sortOrder`, the timestamp trio) are never passed in.
  *
- * `measure` is required on insert and ignored on update — it cannot change once records
- * exist under it. See `saveActivity`.
+ * `measure` is required on insert and may change on update — see `saveActivity`.
  */
 export type ActivityInput = {
   id?: string
@@ -86,9 +100,13 @@ export type ActivityInput = {
   description?: string
   color: string
   icon?: string
+  /** The goal axis. May change on update — see `Measure`. */
   measure: Measure
   targetAmount?: number
   targetPeriod?: Period
+  /** Which axes the card shows. See `Activity.showCheckoff`. */
+  showCheckoff?: boolean
+  showTimer?: boolean
   archived?: boolean
 }
 
@@ -160,3 +178,19 @@ export const completionId = (activityId: string, day: DateKey) => `${activityId}
 export const isOpen = (entry: Entry) => entry.endedAt === OPEN_ENTRY_END
 
 export const isLive = (record: { deletedAt: number }) => record.deletedAt === NOT_DELETED
+
+/**
+ * Whether the activity's card shows the timer axis.
+ *
+ * Not "can hold time" — every activity can, and its sheet always shows the timer. This is the
+ * one definition the dashboard, Today and Insights filter their *display* on, so they never
+ * drift into disagreeing. Falls back to `measure` when `showTimer` is unset, so a record from
+ * before the flags existed shows what it always did. See `Activity.showTimer`.
+ */
+export const tracksTime = (activity: Pick<Activity, 'measure' | 'showTimer'>): boolean =>
+  activity.showTimer ?? activity.measure === 'duration'
+
+/** Whether the activity's card shows the check-off axis. Falls back to `measure`. See `tracksTime`. */
+export const tracksCompletion = (
+  activity: Pick<Activity, 'measure' | 'showCheckoff'>,
+): boolean => activity.showCheckoff ?? activity.measure === 'count'

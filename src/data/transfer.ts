@@ -408,6 +408,13 @@ function validateActivity(value: unknown, index: number): void {
   if (!isNonEmptyString(activity.name)) reject('has no name')
   if (!isNonEmptyString(activity.color)) reject('has no color')
   if (!MEASURES.includes(activity.measure as Measure)) reject('has no measure')
+  // Optional, so a file written before these existed imports unchanged; only a present
+  // non-boolean is a corrupt field.
+  for (const flag of ['showCheckoff', 'showTimer'] as const) {
+    if (activity[flag] !== undefined && typeof activity[flag] !== 'boolean') {
+      reject(`has an unreadable ${flag} flag`)
+    }
+  }
   if (typeof activity.archived !== 'boolean') reject('has no archived flag')
   if (!Number.isFinite(activity.sortOrder)) reject('has no sort order')
   if (activity.description !== undefined && typeof activity.description !== 'string') {

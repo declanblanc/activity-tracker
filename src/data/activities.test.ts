@@ -106,9 +106,9 @@ describe('saveActivity', () => {
     expect(saved.targetAmount).toBe(40 * 60 * 60 * 1000)
   })
 
-  it('ignores an attempt to change the measure of an existing activity', async () => {
-    // Its records are shaped by the measure: a change would either invent times a
-    // check-off never had or discard every interval, and would redenominate the target.
+  it('lets the goal measure of an existing activity change', async () => {
+    // It shapes no stored record any more — every activity can hold both check-offs and
+    // intervals — so the goal axis is just a scoring choice and may move.
     const activity = await saveActivity({
       name: 'Stretching',
       color: '#38bdf8',
@@ -117,20 +117,71 @@ describe('saveActivity', () => {
 
     const updated = await saveActivity({ ...activity, measure: 'duration' })
 
-    expect(updated.measure).toBe('count')
+    expect(updated.measure).toBe('duration')
   })
 
-  it('validates a target against the stored measure, not the submitted one', async () => {
+  it('rejects a save that hides every axis', async () => {
+    await expect(
+      saveActivity({
+        name: 'Nothing',
+        color: '#38bdf8',
+        measure: 'count',
+        showCheckoff: false,
+        showTimer: false,
+      }),
+    ).rejects.toThrow(/check-off, the timer, or both/)
+  })
+
+  it('allows a goal on an axis the card does not show', async () => {
+    // Display and goal are decoupled: a timer-only card can still be scored on the check-off.
+    const saved = await saveActivity({
+      name: 'Reading',
+      color: '#38bdf8',
+      measure: 'count',
+      showCheckoff: false,
+      showTimer: true,
+      targetAmount: 1,
+      targetPeriod: 'day',
+    })
+
+    expect(saved.measure).toBe('count')
+    expect([saved.showCheckoff, saved.showTimer]).toEqual([false, true])
+  })
+
+  it('stores both card-display flags independently of the measure', async () => {
+    const gym = await saveActivity({
+      name: 'Gym',
+      color: '#38bdf8',
+      measure: 'count',
+      showCheckoff: true,
+      showTimer: true,
+    })
+    expect([gym.showCheckoff, gym.showTimer]).toEqual([true, true])
+
+    const off = await saveActivity({ ...gym, showTimer: false })
+    expect([off.showCheckoff, off.showTimer]).toEqual([true, false])
+  })
+
+  it('validates a target against the submitted measure, which can now change', async () => {
     const activity = await saveActivity({
       name: 'Stretching',
       color: '#38bdf8',
       measure: 'count',
     })
 
-    // Submitting `duration` must not buy a way past the count ceiling.
+    // Nine days a week can never be met and is rejected against the count ceiling.
     await expect(
-      saveActivity({ ...activity, measure: 'duration', targetAmount: 9, targetPeriod: 'week' }),
+      saveActivity({ ...activity, targetAmount: 9, targetPeriod: 'week' }),
     ).rejects.toThrow(/never be met/)
+
+    // The same nine as hours a week is a fine goal once the measure is time.
+    const timed = await saveActivity({
+      ...activity,
+      measure: 'duration',
+      targetAmount: 9,
+      targetPeriod: 'week',
+    })
+    expect(timed.measure).toBe('duration')
   })
 
   it('appends new activities in creation order', async () => {

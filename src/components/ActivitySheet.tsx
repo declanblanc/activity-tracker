@@ -51,6 +51,7 @@ export default function ActivitySheet({
   streak,
   longest,
   total,
+  trackedTime,
   startedAt,
   blockBefore,
   inBlock,
@@ -68,7 +69,10 @@ export default function ActivitySheet({
 }: {
   activity: Activity
   amounts: Map<DateKey, number>
-  /** This activity's own stretches, newest first and already capped. Empty for a check-off. */
+  /**
+   * This activity's own stretches, newest first and already capped. Empty for a plain check-off;
+   * a hybrid one that also runs a timer has its timed stretches here.
+   */
   entries: Entry[]
   /**
    * Every timed activity, for the entry form's own picker — which is what still allows an entry
@@ -82,6 +86,8 @@ export default function ActivitySheet({
   streak: number
   longest: number
   total: number
+  /** Time tracked over the horizon — shown beside a hybrid check-off's entry list. */
+  trackedTime: number
   startedAt?: number
   blockBefore: number
   inBlock: boolean
@@ -105,6 +111,9 @@ export default function ActivitySheet({
   // A streak is counted in whichever period the activity is scored by; the total is always
   // days for a check-off and time for a timer.
   const streakUnit = activity.targetPeriod === 'week' ? 'weeks' : 'days'
+  // The sheet shows both axes for every activity — the show flags are the card's, not the
+  // sheet's. `timed` (the goal axis) still governs how the primary "Total" reads and which axis
+  // leads the layout; both the grid and the timer always render.
   const timed = activity.measure === 'duration'
 
   return (
@@ -133,9 +142,9 @@ export default function ActivitySheet({
 
       <GoalLine activity={activity} thisPeriod={thisPeriod} weeklyTarget={weeklyTarget} />
 
-      {/* Running controls live here too, so a timer can be started from the sheet without
-          closing it first. */}
-      {timed && !activity.archived && (
+      {/* Running controls live here for every activity — the sheet is where any activity's time
+          is logged, whatever its card shows — so a timer can be started without closing it. */}
+      {!activity.archived && (
         <div className="mt-4 flex items-center gap-2">
           <IconButton
             label={`${startedAt !== undefined ? 'Pause' : inBlock ? 'Resume' : 'Start'} ${activity.name}`}
@@ -180,29 +189,46 @@ export default function ActivitySheet({
         />
       </dl>
 
-      {/* How history is drawn is the one thing the two measures do not share. A check-off gets the
-          contribution grid; a timed activity gets its stretches as a list, because a square that
-          is merely on or off throws away the quantity. */}
-      {timed ? (
-        <EntryList
-          activity={activity}
-          entries={entries}
-          timedActivities={timedActivities}
-          now={now}
-        />
-      ) : (
-        <div className="mt-6">
-          <h3 className="mb-2 text-sm font-medium text-ink-muted">Past year</h3>
-          <HeatGrid
-            color={activity.color}
+      {/* Both axes, always — the sheet is the full view of an activity whatever its card shows.
+          The contribution grid and the timer's stretch list are two different readings, so both
+          appear; the goal axis leads. A square that is merely on or off throws away the quantity,
+          which is why time keeps its list rather than folding into the grid. */}
+      {activity.measure === 'count' ? (
+        <>
+          <HistoryGrid
+            activity={activity}
             amounts={amounts}
             today={today}
-            weeks={SHEET_WEEKS}
             weeklyTarget={weeklyTarget ?? undefined}
-            onDayActivate={activity.archived ? undefined : onDayActivate}
+            heading="Past year"
+            onDayActivate={onDayActivate}
           />
-          <p className="mt-2 text-2xs text-ink-muted">Tap any past day to fill it in or clear it.</p>
-        </div>
+          <EntryList
+            activity={activity}
+            entries={entries}
+            timedActivities={timedActivities}
+            trackedTime={trackedTime}
+            now={now}
+          />
+        </>
+      ) : (
+        <>
+          <EntryList
+            activity={activity}
+            entries={entries}
+            timedActivities={timedActivities}
+            now={now}
+          />
+          {/* No weekly target here: a timer-led goal is in hours, which the days grid has nothing
+              to score against — the squares are pure presence. */}
+          <HistoryGrid
+            activity={activity}
+            amounts={amounts}
+            today={today}
+            heading="Checked off"
+            onDayActivate={onDayActivate}
+          />
+        </>
       )}
 
       <div className="mt-6">
@@ -254,6 +280,43 @@ export default function ActivitySheet({
 }
 
 /**
+ * The contribution grid, and the note that its squares are editable.
+ *
+ * Shared by a check-off's "Past year" and a hybrid timer's "Checked off": the same grid, the same
+ * tap-to-fill, differing only in heading and whether a weekly target shades the columns.
+ */
+function HistoryGrid({
+  activity,
+  amounts,
+  today,
+  weeklyTarget,
+  heading,
+  onDayActivate,
+}: {
+  activity: Activity
+  amounts: Map<DateKey, number>
+  today: DateKey
+  weeklyTarget?: number
+  heading: string
+  onDayActivate: (day: DateKey) => void
+}) {
+  return (
+    <div className="mt-6">
+      <h3 className="mb-2 text-sm font-medium text-ink-muted">{heading}</h3>
+      <HeatGrid
+        color={activity.color}
+        amounts={amounts}
+        today={today}
+        weeks={SHEET_WEEKS}
+        weeklyTarget={weeklyTarget}
+        onDayActivate={activity.archived ? undefined : onDayActivate}
+      />
+      <p className="mt-2 text-2xs text-ink-muted">Tap any past day to fill it in or clear it.</p>
+    </div>
+  )
+}
+
+/**
  * One timed activity's recorded stretches, newest first — and the place they get corrected.
  *
  * This is what the Log screen used to be, narrowed to one activity. What that screen could do and
@@ -272,11 +335,14 @@ function EntryList({
   activity,
   entries,
   timedActivities,
+  trackedTime,
   now,
 }: {
   activity: Activity
   entries: Entry[]
   timedActivities: Activity[]
+  /** Time over the horizon, shown in the header when this list is a hybrid's secondary axis. */
+  trackedTime?: number
   now: number
 }) {
   // Owned here rather than passed in: the sheet unmounts when it closes, which is what resets a
@@ -286,7 +352,12 @@ function EntryList({
   return (
     <div className="mt-6">
       <div className="mb-2 flex items-baseline gap-2">
-        <h3 className="flex-1 text-sm font-medium text-ink-muted">Recent</h3>
+        <h3 className="flex-1 text-sm font-medium text-ink-muted">
+          Recent
+          {trackedTime !== undefined && trackedTime > 0 && (
+            <span className="text-ink-soft tabular-nums"> · {formatDuration(trackedTime)}</span>
+          )}
+        </h3>
         {!activity.archived && (
           <Button
             variant="quiet"
@@ -421,6 +492,11 @@ function GoalLine({
 }) {
   const target = activity.targetAmount
   if (!target || !activity.targetPeriod) return null
+
+  // A daily check-off is "once a day", never "1 day a day".
+  if (activity.measure === 'count' && activity.targetPeriod === 'day') {
+    return <p className="mt-4 text-sm text-ink-muted">Goal: once a day.</p>
+  }
 
   const goal = formatAmount(activity.measure, target)
   const so_far = formatAmount(activity.measure, thisPeriod)

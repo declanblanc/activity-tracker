@@ -23,10 +23,16 @@ import { getActivities } from '../data/activities.ts'
 import { getCompletions } from '../data/completions.ts'
 import { getEntriesInRange, getOpenEntries } from '../data/entries.ts'
 import { getPref, setPref } from '../data/prefs.ts'
-import type { Activity, Measure, Period } from '../data/types.ts'
+import {
+  tracksCompletion,
+  tracksTime,
+  type Activity,
+  type Measure,
+  type Period,
+} from '../data/types.ts'
 import { streaks, targetAt, type ScoredPeriod } from '../lib/accounting/goals.ts'
 import { bucketTotals, type PeriodTotals } from '../lib/accounting/totals.ts'
-import { dayAmounts, periodAmounts } from '../lib/days.ts'
+import { completionAmounts, dayAmounts, periodAmounts } from '../lib/days.ts'
 import { formatAmount, formatDuration, formatElapsed } from '../lib/format.ts'
 import { dateKey, dayWindowsIn, periodWindow, trailingWindows, type TimeWindow } from '../lib/time.ts'
 import { useNow } from '../lib/useNow.ts'
@@ -118,9 +124,7 @@ export default function Insights() {
     return periodAmounts(dayAmounts(activity, entries, completions, days, now), windows)
   }
 
-  const anyTimed = activities.some(
-    (activity) => activity.measure === 'duration' && !activity.archived,
-  )
+  const anyTimed = activities.some((activity) => tracksTime(activity) && !activity.archived)
   const byPeriod = bucketTotals(entries, trend, now)
   // The trend's last bucket *is* the viewed period, so the comparison against the one
   // before it comes free.
@@ -156,13 +160,13 @@ export default function Insights() {
             {/* Retroactive logging lives here because this is the screen where a gap is seen —
                 a goal short by an hour is the hour you forgot to start.
 
-                Timed activities only: a check-off has no interval to write, and its equivalent
-                gesture is ticking a past square on the year grid below.
+                Only for activities that track time — a plain check-off has no interval to write,
+                and its equivalent gesture is ticking a past square on the year grid below.
 
                 Icon-only: this header already carries a name and a way out of it, and the word
                 "Add" cost enough width to truncate the activity's name to six characters on a
                 phone. */}
-            {focus.measure === 'duration' && (
+            {tracksTime(focus) && (
               <IconButton
                 label="Add an entry"
                 variant="primary"
@@ -228,8 +232,8 @@ export default function Insights() {
         <EntryForm
           className="panel mt-4 p-4"
           draft={draft}
-          // Only a timed activity can hold an interval, so only they are offered.
-          activities={activities.filter((activity) => activity.measure === 'duration')}
+          // Only an activity that tracks time can hold an interval, so only they are offered.
+          activities={activities.filter(tracksTime)}
           onChange={setDraft}
           onClose={() => setDraft(null)}
         />
@@ -298,27 +302,24 @@ export default function Insights() {
             now={now}
           />
 
-          {/* Check-offs only — see `HeatGrid`. For them it is what replaces the retroactive `+`
-              in the header, which a timed activity gets instead. A timer's history is the trend
-              above and the Today timeline, both of which can show how much. */}
-          {focus?.measure === 'count' && (
+          {/* Anything checked off — see `HeatGrid`. For a plain check-off it replaces the
+              retroactive `+` a timer gets instead; a hybrid gets both. The squares come from the
+              check-offs directly, since for a hybrid timer `dayAmounts` is milliseconds. A weekly
+              target shades the columns only when it is measured in days. */}
+          {focus && tracksCompletion(focus) && (
             <div className="panel mt-4 p-4">
               <h2 className="text-2xs font-semibold tracking-widest text-ink-muted uppercase">
-                Past year
+                {focus.measure === 'count' ? 'Past year' : 'Checked off'}
               </h2>
               <div className="mt-2">
                 <HeatGrid
                   color={focus.color}
-                  amounts={dayAmounts(
-                    focus,
-                    entries,
-                    completions,
-                    dayWindowsIn({ start: readStart, end: Math.min(readEnd, now) }),
-                    now,
-                  )}
+                  amounts={completionAmounts(focus.id, completions)}
                   today={dateKey(now)}
                   weeks={FOCUS_WEEKS}
-                  weeklyTarget={targetAt(focus, 'week') ?? undefined}
+                  weeklyTarget={
+                    focus.measure === 'count' ? (targetAt(focus, 'week') ?? undefined) : undefined
+                  }
                 />
               </div>
             </div>

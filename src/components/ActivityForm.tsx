@@ -1,15 +1,20 @@
-import { useState } from 'react'
-import type { Period } from '../data/types.ts'
+import { useState, type ReactNode } from 'react'
 import { ICONS, PALETTE } from '../lib/palette.ts'
-import type { Draft } from './activityDraft.ts'
+import { GOAL_SHAPES, applyGoalShape, goalShapeOf, type Draft, type GoalShape } from './activityDraft.ts'
 import Button from './ui/Button.tsx'
-
-const PERIODS: Period[] = ['day', 'week', 'month']
 
 const FIELD = 'mt-1 w-full rounded-lg bg-raised px-3 py-2 text-ink focus-ring'
 
 /**
- * One form for both measures, and for both creating and editing.
+ * The largest count goal each period can hold, mirrored from `MAX_COUNT_TARGET` in
+ * `data/activities.ts` — which is the authority that rejects the rest. Kept here so the form
+ * does not import the data layer (and with it Dexie). No `day`: that period is "Once a day",
+ * which has no amount to cap.
+ */
+const MAX_DAYS: Record<'week' | 'month', number> = { week: 7, month: 31 }
+
+/**
+ * One form for creating and editing, and for any mix of the two axes.
  *
  * In a dialog rather than inline under a row: it is longer than either form it replaces, and the
  * dialog is also the scroll container, so a tall form on a short screen produces one scrollbar
@@ -17,14 +22,11 @@ const FIELD = 'mt-1 w-full rounded-lg bg-raised px-3 py-2 text-ink focus-ring'
  */
 export default function ActivityForm({
   initial,
-  editing,
   submitLabel,
   onSubmit,
   onCancel,
 }: {
   initial: Draft
-  /** True when an existing activity is being edited, which fixes its measure. */
-  editing: boolean
   submitLabel: string
   onSubmit: (draft: Draft) => void
   onCancel: () => void
@@ -34,6 +36,21 @@ export default function ActivityForm({
     setDraft((current) => ({ ...current, [key]: value }))
 
   const counted = draft.measure === 'count'
+  const shape = goalShapeOf(draft)
+  const onceADay = shape === 'once'
+
+  /**
+   * Turn a card axis on or off. Display only — which axes the activity's card shows on the list.
+   * The goal and the sheet are untouched by this. The one invariant the save path also enforces:
+   * at least one axis stays on, so the last one on is locked.
+   */
+  const setAxis = (axis: 'checkoff' | 'timer', on: boolean) =>
+    setDraft((current) => {
+      const showCheckoff = axis === 'checkoff' ? on : current.showCheckoff
+      const showTimer = axis === 'timer' ? on : current.showTimer
+      if (!showCheckoff && !showTimer) return current
+      return { ...current, showCheckoff, showTimer }
+    })
 
   return (
     <form
@@ -44,49 +61,32 @@ export default function ActivityForm({
         onSubmit({ ...draft, name: draft.name.trim(), description: draft.description.trim() })
       }}
     >
-      {/* The measure comes first because it is what the rest of the form means. */}
-      {editing ? (
-        <p className="rounded-lg bg-raised px-3 py-2 text-xs text-ink-muted">
-          {counted ? 'Checked off each day' : 'Timed with a timer'} — this cannot be changed.
-          Archive it and add a new one instead.
+      {/* Display only: which axes the card on the activity list shows. The activity's own page
+          always shows both, and the goal below is independent of this. Both default on; the last
+          one on cannot be turned off. */}
+      <fieldset>
+        <legend className="text-sm font-medium text-ink">Show on the activity list</legend>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          Its own page always shows both — this is just the card.
         </p>
-      ) : (
-        <fieldset>
-          <legend className="text-sm font-medium text-ink">How do you track it?</legend>
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <MeasureOption
-              label="Check off each day"
-              selected={counted}
-              onSelect={() =>
-                setDraft((current) => ({
-                  ...current,
-                  measure: 'count',
-                  targetAmount: '1',
-                  targetPeriod: 'day',
-                }))
-              }
-            />
-            <MeasureOption
-              label="Time it with a timer"
-              selected={!counted}
-              onSelect={() =>
-                setDraft((current) => ({
-                  ...current,
-                  measure: 'duration',
-                  // No default goal for a timer: "some hours a day" is not a guess worth making.
-                  targetAmount: '',
-                  targetPeriod: 'day',
-                }))
-              }
-            />
-          </div>
-          <p className="mt-1 text-xs text-ink-muted">
-            {counted
-              ? 'One tap a day. Good for habits — stretch, read, take the pills.'
-              : 'Start and stop a timer. Good for anything you want the hours for.'}
-          </p>
-        </fieldset>
-      )}
+        <div className="mt-2 flex flex-col gap-2">
+          <AxisToggle
+            label="Heat map"
+            hint="A filled square for each day you check it off."
+            checked={draft.showCheckoff}
+            // Off would leave nothing on, so the sole remaining axis is locked.
+            locked={draft.showCheckoff && !draft.showTimer}
+            onChange={(on) => setAxis('checkoff', on)}
+          />
+          <AxisToggle
+            label="Timer"
+            hint="Start and stop a timer, with a running total."
+            checked={draft.showTimer}
+            locked={draft.showTimer && !draft.showCheckoff}
+            onChange={(on) => setAxis('timer', on)}
+          />
+        </div>
+      </fieldset>
 
       <label className="mt-4 block text-sm font-medium text-ink" htmlFor="activity-name">
         Name
@@ -114,36 +114,37 @@ export default function ActivityForm({
       />
 
       <fieldset className="mt-4">
-        <legend className="text-sm font-medium text-ink">
-          Goal <span className="font-normal text-ink-muted">(optional)</span>
-        </legend>
+        <legend className="text-sm font-medium text-ink">Goal</legend>
+        {/* An amount and a shape, together the whole goal. The amount hides for "Once a day",
+            whose count is fixed at one. Days-per-day is not in the list — see `GOAL_SHAPES`. */}
         <div className="mt-1 flex items-center gap-2">
-          <input
-            value={draft.targetAmount}
-            onChange={(event) => set('targetAmount', event.target.value)}
-            type="number"
-            // A count is a whole number of days; a duration is typed in hours and quarter
-            // hours, which is the granularity anyone actually sets a goal at.
-            min={counted ? 1 : 0}
-            step={counted ? 1 : 0.25}
-            inputMode={counted ? 'numeric' : 'decimal'}
-            aria-label={counted ? 'Times per period' : 'Hours per period'}
-            className={`${FIELD} mt-0 w-20`}
-          />
-          {/* `shrink-0` and no wrapping: without them the unit broke onto two lines and squeezed
-              the period select down to its chevron. */}
-          <span className="shrink-0 text-sm whitespace-nowrap text-ink-muted">
-            {counted ? 'per' : 'hours per'}
-          </span>
+          {!onceADay && (
+            <input
+              value={draft.targetAmount}
+              onChange={(event) => set('targetAmount', event.target.value)}
+              type="number"
+              // A count is a whole number of days, capped at what the period can hold; a
+              // duration is typed in hours and quarter hours, uncapped.
+              required
+              min={counted ? 1 : 0.25}
+              step={counted ? 1 : 0.25}
+              max={counted ? MAX_DAYS[draft.targetPeriod as 'week' | 'month'] : undefined}
+              inputMode={counted ? 'numeric' : 'decimal'}
+              aria-label={counted ? 'Days per period' : 'Hours per period'}
+              className={`${FIELD} mt-0 w-20`}
+            />
+          )}
           <select
-            value={draft.targetPeriod}
-            onChange={(event) => set('targetPeriod', event.target.value as Period)}
-            aria-label="Goal period"
-            className={`${FIELD} mt-0 min-w-24 flex-1`}
+            value={shape}
+            onChange={(event) =>
+              setDraft((current) => applyGoalShape(current, event.target.value as GoalShape))
+            }
+            aria-label="Goal"
+            className={`${FIELD} mt-0 min-w-40 flex-1`}
           >
-            {PERIODS.map((period) => (
-              <option key={period} value={period}>
-                {period}
+            {GOAL_SHAPES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -209,36 +210,46 @@ export default function ActivityForm({
   )
 }
 
-function MeasureOption({
+/**
+ * One axis, as a checkbox with a hint. `locked` is the sole-remaining-axis case: it stays checked
+ * and disabled, because turning it off would leave the activity tracking nothing.
+ */
+function AxisToggle({
   label,
-  selected,
-  onSelect,
+  hint,
+  checked,
+  locked,
+  onChange,
 }: {
   label: string
-  selected: boolean
-  onSelect: () => void
+  hint: ReactNode
+  checked: boolean
+  locked: boolean
+  onChange: (on: boolean) => void
 }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={`focus-ring min-h-11 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-        selected ? 'bg-accent text-on-accent' : 'bg-raised text-ink-muted hover:text-ink'
-      }`}
-    >
-      {label}
-    </button>
+    <label className={`flex items-start gap-3 ${locked ? 'opacity-70' : ''}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={locked}
+        onChange={(event) => onChange(event.target.checked)}
+        className="focus-ring mt-0.5 size-5 shrink-0 rounded accent-accent"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-ink">{label}</span>
+        <span className="mt-0.5 block text-xs text-ink-muted">{hint}</span>
+      </span>
+    </label>
   )
 }
 
 /** What the chosen goal will actually do, in one line. */
 function goalHint(draft: Draft): string {
-  if (draft.targetAmount.trim() === '') {
+  if (draft.targetPeriod === 'day') {
     return draft.measure === 'count'
-      ? 'No goal: days still fill in, but there is nothing to streak against.'
-      : 'No goal: time is still tracked, with nothing to measure it against.'
+      ? 'Streak counts consecutive days you check it off.'
+      : 'Streak counts consecutive days you hit the hours.'
   }
-  if (draft.targetPeriod === 'day') return 'Streak counts consecutive days.'
   return `Streak counts consecutive ${draft.targetPeriod}s that hit the goal.`
 }

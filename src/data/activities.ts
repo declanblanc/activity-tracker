@@ -51,12 +51,21 @@ export async function saveActivity(input: ActivityInput): Promise<Activity> {
 
   const existing = input.id ? await getActivity(input.id) : undefined
 
-  // The measure of an existing activity is fixed. Its records are shaped by it — a count
-  // activity has dated check-offs and a duration one has intervals — so a change would
-  // either invent start and end times a check-off never had or discard every interval. It
-  // would also silently redenominate the target, turning "3 days a week" into three hours.
-  // The escape hatch is archive-and-add, which keeps the history and has no ambiguity.
-  const measure = existing?.measure ?? input.measure
+  // The goal axis: which axis the single goal, the streak and the "total" are scored on.
+  // Changeable — it shapes no stored record — and independent of what the card shows. The form
+  // clears the goal when it moves across measures, since a days target cannot be read as hours.
+  const measure = input.measure
+
+  // Which axes the *card* shows on the activity list. Display only: the sheet shows both axes
+  // for every activity, and the goal above is decoupled from these. Absent falls back to the
+  // measure, so a record from before the flags existed shows the single axis it always did.
+  const showCheckoff = input.showCheckoff ?? existing?.showCheckoff
+  const showTimer = input.showTimer ?? existing?.showTimer
+  const showsCheckoff = showCheckoff ?? measure === 'count'
+  const showsTimer = showTimer ?? measure === 'duration'
+  if (!showsCheckoff && !showsTimer) {
+    throw new Error('An activity must show the check-off, the timer, or both.')
+  }
 
   if (input.targetAmount !== undefined) {
     // Negated rather than `<= 0` so a NaN from a half-typed form field is rejected too.
@@ -80,6 +89,8 @@ export async function saveActivity(input: ActivityInput): Promise<Activity> {
     color: input.color,
     icon: input.icon?.trim() || undefined,
     measure,
+    showCheckoff,
+    showTimer,
     targetAmount: input.targetAmount,
     targetPeriod: input.targetPeriod,
     archived: input.archived ?? false,
