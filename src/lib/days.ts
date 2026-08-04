@@ -36,14 +36,7 @@ export function dayAmounts(
   now: number,
 ): Map<DateKey, number> {
   if (activity.measure === 'count') {
-    return new Map(
-      completions
-        // `done === true`, never truthiness. A `done: false` row is a decision that was
-        // recorded — an un-log — and reading it as absence is how a cleared day comes back
-        // to life. It contributes 0, which breaks a streak exactly as a missing row does.
-        .filter((row) => row.activityId === activity.id && row.done)
-        .map((row) => [row.day, 1]),
-    )
+    return completionAmounts(activity.id, completions)
   }
 
   const own = entries.filter((entry) => entry.activityId === activity.id)
@@ -58,6 +51,27 @@ export function dayAmounts(
       dateKey(bucket.window.start),
       bucket.perActivity.get(activity.id) ?? 0,
     ]),
+  )
+}
+
+/**
+ * day → 1 for every logged day of one activity's check-offs. A missing key is zero.
+ *
+ * The check-off half of `dayAmounts`, pulled out because an activity that leads with its timer
+ * but also checks off needs the contribution grid on its own — it scores time through
+ * `dayAmounts`, so its grid squares come from here instead. See `Activity.showCheckoff`.
+ */
+export function completionAmounts(
+  activityId: string,
+  completions: Completion[],
+): Map<DateKey, number> {
+  return new Map(
+    completions
+      // `done === true`, never truthiness. A `done: false` row is a decision that was recorded
+      // — an un-log — and reading it as absence is how a cleared day comes back to life. It
+      // contributes 0, which breaks a streak exactly as a missing row does.
+      .filter((row) => row.activityId === activityId && row.done)
+      .map((row) => [row.day, 1]),
   )
 }
 
