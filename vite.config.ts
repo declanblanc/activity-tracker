@@ -1,7 +1,24 @@
+import { execSync } from 'node:child_process'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+
+/**
+ * `<package version>+<short commit SHA>`, e.g. `0.1.0+a1b2c3d`. The SHA is what makes every
+ * push to main a distinct version with no one having to remember to bump anything — the
+ * semver stays for human-meaningful releases, the SHA moves on every commit. Falls back to
+ * the bare package version when there is no git checkout (a source-tarball build).
+ */
+function appVersion(): string {
+  const packageVersion = process.env.npm_package_version ?? '0.0.0'
+  try {
+    const sha = execSync('git rev-parse --short HEAD').toString().trim()
+    return `${packageVersion}+${sha}`
+  } catch {
+    return packageVersion
+  }
+}
 
 export default defineConfig({
   plugins: [
@@ -37,9 +54,9 @@ export default defineConfig({
       },
     }),
   ],
-  // Bake the package.json version in at build time so the Settings screen shows it and it
-  // can never drift from the real number — npm sets `npm_package_version` for every script.
-  define: { __APP_VERSION__: JSON.stringify(process.env.npm_package_version) },
+  // Bake the version in at build time so the Settings screen shows it and it can never drift
+  // from the real build — see `appVersion`, which appends the commit SHA so every deploy differs.
+  define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   // Vite picks its own port when the default is taken, which loses whichever port the
   // surrounding tooling assigned. Honour `PORT` when it is set.
   server: { port: Number(process.env.PORT) || 5173 },
