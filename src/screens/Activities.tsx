@@ -338,9 +338,12 @@ export default function Activities() {
 
   return (
     <section className="screen-pad mx-auto w-full max-w-3xl lg:max-w-5xl xl:max-w-6xl">
-      <header className="flex items-center justify-between gap-2">
+      {/* Wraps on a narrow phone: three toolbar buttons beside the title overflow 375px, which is
+          what scrolled the whole page sideways. `ml-auto` keeps the group right-aligned whether it
+          sits on the title's row or drops below it. */}
+      <header className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-semibold text-ink">Activities</h1>
-        <div className="flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {/* Only worth offering once a strip is actually taking up room to reclaim. */}
           {checkoffs.length > 0 && (
             <Button
