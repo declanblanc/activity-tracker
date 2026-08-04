@@ -1,8 +1,11 @@
 import { BarChart3, CalendarDays, LayoutGrid, Settings2 } from 'lucide-react'
-import { lazy, Suspense, type ComponentType, type ReactElement } from 'react'
+import { lazy, Suspense, useCallback, useRef, type ComponentType, type ReactElement } from 'react'
 import { NavLink, Route, Routes } from 'react-router'
 import ForgottenPrompt from './components/ForgottenPrompt.tsx'
+import PullToRefresh from './components/PullToRefresh.tsx'
 import SyncAgent from './components/SyncAgent.tsx'
+import { getPref } from './data/prefs.ts'
+import { syncNow } from './data/sync.ts'
 import Activities from './screens/Activities.tsx'
 import DeletedActivities from './screens/DeletedActivities.tsx'
 import Settings from './screens/Settings.tsx'
@@ -52,6 +55,20 @@ const SCREENS: {
  * horizontal space is the surplus one.
  */
 export default function App() {
+  // `<main>` is the scroll container, so it is what a pull-to-refresh listens on.
+  const mainRef = useRef<HTMLElement>(null)
+
+  // Pulling down means "sync now" — the only refresh a local-first app has to offer. Silent on
+  // failure and a no-op without a token, exactly like the background SyncAgent.
+  const refresh = useCallback(async () => {
+    if (!getPref('syncToken')) return
+    try {
+      await syncNow()
+    } catch {
+      // Silent: a failed sync is the normal state offline, and Settings shows the last success.
+    }
+  }, [])
+
   return (
     // `h-dvh` and not `min-h-dvh`: a percentage height inside a flex item only resolves when the
     // item's own height is definite, and `min-height` does not make it so. Today's timeline asks for
@@ -63,20 +80,24 @@ export default function App() {
       {/* `min-w-0` so a wide child (the trend chart) cannot push the flex row past the viewport
           instead of shrinking. `clear-nav` leaves room for the bottom bar and the home indicator
           beneath it, and collapses at `md` where neither exists. */}
-      <main className="clear-nav min-w-0 flex-1 overflow-y-auto">
-        {/* No fallback content: the chunk is served from the same cache as the shell, so the
-            wait is a frame or two, and a spinner that flashes is worse than nothing. */}
-        <Suspense fallback={null}>
-          <Routes>
-            {SCREENS.map(({ path, element }) => (
-              <Route key={path} path={path} element={element} />
-            ))}
-            {/* Reached from Settings, not the tab bar: recovering a deleted activity is a rare
-                errand and does not earn a fifth tab. */}
-            <Route path="/deleted" element={<DeletedActivities />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+      {/* `relative` anchors the pull-to-refresh indicator to the top of the scroll area;
+          `overscroll-y-contain` stops the browser's own pull-to-refresh from firing on top of it. */}
+      <main ref={mainRef} className="clear-nav relative min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
+        <PullToRefresh scrollRef={mainRef} onRefresh={refresh}>
+          {/* No fallback content: the chunk is served from the same cache as the shell, so the
+              wait is a frame or two, and a spinner that flashes is worse than nothing. */}
+          <Suspense fallback={null}>
+            <Routes>
+              {SCREENS.map(({ path, element }) => (
+                <Route key={path} path={path} element={element} />
+              ))}
+              {/* Reached from Settings, not the tab bar: recovering a deleted activity is a rare
+                  errand and does not earn a fifth tab. */}
+              <Route path="/deleted" element={<DeletedActivities />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </Suspense>
+        </PullToRefresh>
       </main>
       <BottomBar />
       {/* Mounted here, not on a screen: a forgotten timer is worth raising whichever screen the
