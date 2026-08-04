@@ -1,6 +1,6 @@
 import { Pause, Play, Square } from 'lucide-react'
 import {
-  useEffect,
+  useCallback,
   useRef,
   useState,
   type CSSProperties,
@@ -9,7 +9,8 @@ import {
 import type { Activity, DateKey } from '../data/types.ts'
 import { targetAt } from '../lib/accounting/goals.ts'
 import { formatAmount, formatDuration, formatElapsed, formatTime } from '../lib/format.ts'
-import { weeksThatFit } from '../lib/heatStrip.ts'
+import { GAP, SQUARE, weeksThatFit } from '../lib/heatStrip.ts'
+import { formatKey, shiftKey } from '../lib/time.ts'
 import { useNow } from '../lib/useNow.ts'
 import { HeatGrid } from './HeatGrid.tsx'
 import { IconButton } from './ui/Button.tsx'
@@ -38,22 +39,88 @@ export const CARD_MAX_WEEKS = 26
  * asks for what fits and nothing more.
  */
 function useFittingWeeks(max: number) {
-  const strip = useRef<HTMLDivElement>(null)
   const [weeks, setWeeks] = useState(max)
+  const observer = useRef<ResizeObserver | null>(null)
 
-  useEffect(() => {
-    const element = strip.current
-    if (!element) return
+  // A callback ref rather than an effect, so the measurement re-runs every time the strip node
+  // mounts. The strip is unmounted whenever the card switches to compact; an effect keyed on
+  // `max` would not re-observe the fresh node on the way back, leaving `weeks` stuck at a stale
+  // value and the grid drawn as a sliver pinned to one edge.
+  const strip = useCallback(
+    (element: HTMLDivElement | null) => {
+      observer.current?.disconnect()
+      if (!element) return
 
-    const measure = () => setWeeks(Math.min(max, weeksThatFit(element.clientWidth)))
-    measure()
+      const measure = () => setWeeks(Math.min(max, weeksThatFit(element.clientWidth)))
+      measure()
 
-    const observer = new ResizeObserver(measure)
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [max])
+      observer.current = new ResizeObserver(measure)
+      observer.current.observe(element)
+    },
+    [max],
+  )
 
   return [strip, weeks] as const
+}
+
+/** The compact strip's span: the last week, at a glance. */
+const COMPACT_DAYS = 7
+
+/**
+ * The last seven days as a single horizontal row — the compact card's heat strip.
+ *
+ * The full grid is seven rows tall whatever its width, which is the wrong shape for a card meant
+ * to pack tight. This lays the recent week along one row instead: short enough to keep the card
+ * compact, long enough to still show the current run. Squares reuse the grid's own styling and
+ * stay clickable, so a missed day is backfilled here too. No weekly-target shading — a single row
+ * has no week columns to score, and the run of solid squares is the whole story at this size.
+ */
+function WeekStrip({
+  color,
+  amounts,
+  today,
+  onToggleDay,
+}: {
+  color: string
+  amounts: Map<DateKey, number>
+  today: DateKey
+  onToggleDay?: (day: DateKey) => void
+}) {
+  const days = Array.from({ length: COMPACT_DAYS }, (_, index) =>
+    shiftKey(today, index - (COMPACT_DAYS - 1)),
+  )
+
+  return (
+    <div
+      className="mt-3 flex"
+      style={{ '--activity': color, gap: `${GAP}px` } as CSSProperties}
+    >
+      {days.map((day) => {
+        const done = (amounts.get(day) ?? 0) > 0
+        const shared = {
+          className: 'heat-square',
+          style: { width: SQUARE, height: SQUARE } as CSSProperties,
+          'data-credit': done ? 'full' : 'none',
+          'data-today': day === today,
+          title: formatKey(day),
+        }
+        const label = `${formatKey(day)} — ${done ? 'completed' : 'not completed'}`
+
+        if (!onToggleDay) return <div key={day} {...shared} aria-label={label} />
+
+        return (
+          <button
+            key={day}
+            type="button"
+            {...shared}
+            aria-label={label}
+            aria-pressed={done}
+            onClick={() => onToggleDay(day)}
+          />
+        )
+      })}
+    </div>
+  )
 }
 
 type Shared = {
@@ -180,7 +247,7 @@ export function CountCard({
   thisWeek: number
   streak: number
   total: number
-  /** Drop the heat strip so the card shrinks to its identity row, matching a timed card. */
+  /** Trade the full grid for a one-row last-seven-days strip, so the card packs tighter. */
   compact?: boolean
   onToggleToday: () => void
   onToggleDay: (day: DateKey) => void
@@ -212,7 +279,14 @@ export function CountCard({
         </button>
       }
     >
-      {!compact && (
+      {compact ? (
+        <WeekStrip
+          color={activity.color}
+          amounts={amounts}
+          today={today}
+          onToggleDay={activity.archived ? undefined : onToggleDay}
+        />
+      ) : (
         <div className="mt-3" ref={strip}>
           <HeatGrid
             color={activity.color}
