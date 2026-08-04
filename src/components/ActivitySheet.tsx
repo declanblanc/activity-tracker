@@ -11,14 +11,7 @@ import {
 } from 'lucide-react'
 import { useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import {
-  isOpen,
-  tracksCompletion,
-  tracksTime,
-  type Activity,
-  type DateKey,
-  type Entry,
-} from '../data/types.ts'
+import { isOpen, type Activity, type DateKey, type Entry } from '../data/types.ts'
 import { targetAt } from '../lib/accounting/goals.ts'
 import { formatAmount, formatDuration, formatElapsed, formatTime } from '../lib/format.ts'
 import { useNow } from '../lib/useNow.ts'
@@ -118,11 +111,10 @@ export default function ActivitySheet({
   // A streak is counted in whichever period the activity is scored by; the total is always
   // days for a check-off and time for a timer.
   const streakUnit = activity.targetPeriod === 'week' ? 'weeks' : 'days'
+  // The sheet shows both axes for every activity — the show flags are the card's, not the
+  // sheet's. `timed` (the goal axis) still governs how the primary "Total" reads and which axis
+  // leads the layout; both the grid and the timer always render.
   const timed = activity.measure === 'duration'
-  // A hybrid shows both axes; a plain activity shows only its own. `timed` still governs how the
-  // primary total reads, `canTime`/`canCheck` govern which secondary blocks appear.
-  const canTime = tracksTime(activity)
-  const canCheck = tracksCompletion(activity)
 
   return (
     <div
@@ -150,10 +142,9 @@ export default function ActivitySheet({
 
       <GoalLine activity={activity} thisPeriod={thisPeriod} weeklyTarget={weeklyTarget} />
 
-      {/* Running controls live here too, so a timer can be started from the sheet without
-          closing it first. A hybrid check-off gets them as well — this is where its time is
-          logged, since its dashboard card stays a plain check-off. */}
-      {canTime && !activity.archived && (
+      {/* Running controls live here for every activity — the sheet is where any activity's time
+          is logged, whatever its card shows — so a timer can be started without closing it. */}
+      {!activity.archived && (
         <div className="mt-4 flex items-center gap-2">
           <IconButton
             label={`${startedAt !== undefined ? 'Pause' : inBlock ? 'Resume' : 'Start'} ${activity.name}`}
@@ -198,9 +189,10 @@ export default function ActivitySheet({
         />
       </dl>
 
-      {/* How history is drawn is where the two axes part. A check-off gets the contribution grid;
-          a timer gets its stretches as a list, because a square that is merely on or off throws
-          away the quantity. A hybrid gets both, its primary axis first. */}
+      {/* Both axes, always — the sheet is the full view of an activity whatever its card shows.
+          The contribution grid and the timer's stretch list are two different readings, so both
+          appear; the goal axis leads. A square that is merely on or off throws away the quantity,
+          which is why time keeps its list rather than folding into the grid. */}
       {activity.measure === 'count' ? (
         <>
           <HistoryGrid
@@ -211,15 +203,13 @@ export default function ActivitySheet({
             heading="Past year"
             onDayActivate={onDayActivate}
           />
-          {canTime && (
-            <EntryList
-              activity={activity}
-              entries={entries}
-              timedActivities={timedActivities}
-              trackedTime={trackedTime}
-              now={now}
-            />
-          )}
+          <EntryList
+            activity={activity}
+            entries={entries}
+            timedActivities={timedActivities}
+            trackedTime={trackedTime}
+            now={now}
+          />
         </>
       ) : (
         <>
@@ -229,17 +219,15 @@ export default function ActivitySheet({
             timedActivities={timedActivities}
             now={now}
           />
-          {canCheck && (
-            // No weekly target here: a hybrid timer's goal is in hours, which the days grid has
-            // nothing to score against — the squares are pure presence.
-            <HistoryGrid
-              activity={activity}
-              amounts={amounts}
-              today={today}
-              heading="Checked off"
-              onDayActivate={onDayActivate}
-            />
-          )}
+          {/* No weekly target here: a timer-led goal is in hours, which the days grid has nothing
+              to score against — the squares are pure presence. */}
+          <HistoryGrid
+            activity={activity}
+            amounts={amounts}
+            today={today}
+            heading="Checked off"
+            onDayActivate={onDayActivate}
+          />
         </>
       )}
 
@@ -504,6 +492,11 @@ function GoalLine({
 }) {
   const target = activity.targetAmount
   if (!target || !activity.targetPeriod) return null
+
+  // A daily check-off is "once a day", never "1 day a day".
+  if (activity.measure === 'count' && activity.targetPeriod === 'day') {
+    return <p className="mt-4 text-sm text-ink-muted">Goal: once a day.</p>
+  }
 
   const goal = formatAmount(activity.measure, target)
   const so_far = formatAmount(activity.measure, thisPeriod)

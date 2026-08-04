@@ -1,12 +1,17 @@
 import { useState, type ReactNode } from 'react'
-import type { Period } from '../data/types.ts'
 import { ICONS, PALETTE } from '../lib/palette.ts'
-import type { Draft } from './activityDraft.ts'
+import { GOAL_SHAPES, applyGoalShape, goalShapeOf, type Draft, type GoalShape } from './activityDraft.ts'
 import Button from './ui/Button.tsx'
 
-const PERIODS: Period[] = ['day', 'week', 'month']
-
 const FIELD = 'mt-1 w-full rounded-lg bg-raised px-3 py-2 text-ink focus-ring'
+
+/**
+ * The largest count goal each period can hold, mirrored from `MAX_COUNT_TARGET` in
+ * `data/activities.ts` — which is the authority that rejects the rest. Kept here so the form
+ * does not import the data layer (and with it Dexie). No `day`: that period is "Once a day",
+ * which has no amount to cap.
+ */
+const MAX_DAYS: Record<'week' | 'month', number> = { week: 7, month: 31 }
 
 /**
  * One form for creating and editing, and for any mix of the two axes.
@@ -31,23 +36,20 @@ export default function ActivityForm({
     setDraft((current) => ({ ...current, [key]: value }))
 
   const counted = draft.measure === 'count'
-  const bothAxes = draft.showCheckoff && draft.showTimer
+  const shape = goalShapeOf(draft)
+  const onceADay = shape === 'once'
 
   /**
-   * Turn an axis on or off, keeping the two invariants the save path also enforces: at least one
-   * axis stays on, and the lead (`measure`) stays visible. Hiding the lead moves it to the other
-   * axis and drops the goal, whose unit no longer applies.
+   * Turn a card axis on or off. Display only — which axes the activity's card shows on the list.
+   * The goal and the sheet are untouched by this. The one invariant the save path also enforces:
+   * at least one axis stays on, so the last one on is locked.
    */
   const setAxis = (axis: 'checkoff' | 'timer', on: boolean) =>
     setDraft((current) => {
       const showCheckoff = axis === 'checkoff' ? on : current.showCheckoff
       const showTimer = axis === 'timer' ? on : current.showTimer
       if (!showCheckoff && !showTimer) return current
-
-      let { measure, targetAmount } = current
-      if (measure === 'count' && !showCheckoff) [measure, targetAmount] = ['duration', '']
-      if (measure === 'duration' && !showTimer) [measure, targetAmount] = ['count', '']
-      return { ...current, showCheckoff, showTimer, measure, targetAmount }
+      return { ...current, showCheckoff, showTimer }
     })
 
   return (
@@ -59,22 +61,26 @@ export default function ActivityForm({
         onSubmit({ ...draft, name: draft.name.trim(), description: draft.description.trim() })
       }}
     >
-      {/* Both axes come first because the goal below is in whichever leads. Both default on; the
-          last one on cannot be turned off. */}
+      {/* Display only: which axes the card on the activity list shows. The activity's own page
+          always shows both, and the goal below is independent of this. Both default on; the last
+          one on cannot be turned off. */}
       <fieldset>
-        <legend className="text-sm font-medium text-ink">How do you track it?</legend>
+        <legend className="text-sm font-medium text-ink">Show on the activity list</legend>
+        <p className="mt-0.5 text-xs text-ink-muted">
+          Its own page always shows both — this is just the card.
+        </p>
         <div className="mt-2 flex flex-col gap-2">
           <AxisToggle
-            label="Check it off each day"
-            hint="One tap a day. Good for habits — stretch, read, take the pills."
+            label="Heat map"
+            hint="A filled square for each day you check it off."
             checked={draft.showCheckoff}
             // Off would leave nothing on, so the sole remaining axis is locked.
             locked={draft.showCheckoff && !draft.showTimer}
             onChange={(on) => setAxis('checkoff', on)}
           />
           <AxisToggle
-            label="Track time with a timer"
-            hint="Start and stop a timer. Good for anything you want the hours for."
+            label="Timer"
+            hint="Start and stop a timer, with a running total."
             checked={draft.showTimer}
             locked={draft.showTimer && !draft.showCheckoff}
             onChange={(on) => setAxis('timer', on)}
@@ -108,54 +114,37 @@ export default function ActivityForm({
       />
 
       <fieldset className="mt-4">
-        <legend className="text-sm font-medium text-ink">
-          Goal <span className="font-normal text-ink-muted">(optional)</span>
-        </legend>
+        <legend className="text-sm font-medium text-ink">Goal</legend>
+        {/* An amount and a shape, together the whole goal. The amount hides for "Once a day",
+            whose count is fixed at one. Days-per-day is not in the list — see `GOAL_SHAPES`. */}
         <div className="mt-1 flex items-center gap-2">
-          <input
-            value={draft.targetAmount}
-            onChange={(event) => set('targetAmount', event.target.value)}
-            type="number"
-            // A count is a whole number of days; a duration is typed in hours and quarter
-            // hours, which is the granularity anyone actually sets a goal at.
-            min={counted ? 1 : 0}
-            step={counted ? 1 : 0.25}
-            inputMode={counted ? 'numeric' : 'decimal'}
-            aria-label={counted ? 'Times per period' : 'Hours per period'}
-            className={`${FIELD} mt-0 w-20`}
-          />
-          {/* With both axes shown the goal could be about either, so its unit becomes a select
-              that doubles as the choice of which axis leads. With one axis it is fixed, and reads
-              as the bare "per" the check-off wording was pared down to. `shrink-0` and no
-              wrapping: without them the unit broke onto two lines and squeezed the period select
-              down to its chevron. */}
-          {bothAxes ? (
-            <>
-              <select
-                value={counted ? 'days' : 'hours'}
-                onChange={(event) => set('measure', event.target.value === 'days' ? 'count' : 'duration')}
-                aria-label="Goal unit"
-                className={`${FIELD} mt-0 w-20`}
-              >
-                <option value="days">days</option>
-                <option value="hours">hours</option>
-              </select>
-              <span className="shrink-0 text-sm text-ink-muted">per</span>
-            </>
-          ) : (
-            <span className="shrink-0 text-sm whitespace-nowrap text-ink-muted">
-              {counted ? 'per' : 'hours per'}
-            </span>
+          {!onceADay && (
+            <input
+              value={draft.targetAmount}
+              onChange={(event) => set('targetAmount', event.target.value)}
+              type="number"
+              // A count is a whole number of days, capped at what the period can hold; a
+              // duration is typed in hours and quarter hours, uncapped.
+              required
+              min={counted ? 1 : 0.25}
+              step={counted ? 1 : 0.25}
+              max={counted ? MAX_DAYS[draft.targetPeriod as 'week' | 'month'] : undefined}
+              inputMode={counted ? 'numeric' : 'decimal'}
+              aria-label={counted ? 'Days per period' : 'Hours per period'}
+              className={`${FIELD} mt-0 w-20`}
+            />
           )}
           <select
-            value={draft.targetPeriod}
-            onChange={(event) => set('targetPeriod', event.target.value as Period)}
-            aria-label="Goal period"
-            className={`${FIELD} mt-0 min-w-24 flex-1`}
+            value={shape}
+            onChange={(event) =>
+              setDraft((current) => applyGoalShape(current, event.target.value as GoalShape))
+            }
+            aria-label="Goal"
+            className={`${FIELD} mt-0 min-w-40 flex-1`}
           >
-            {PERIODS.map((period) => (
-              <option key={period} value={period}>
-                {period}
+            {GOAL_SHAPES.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>
@@ -257,11 +246,10 @@ function AxisToggle({
 
 /** What the chosen goal will actually do, in one line. */
 function goalHint(draft: Draft): string {
-  if (draft.targetAmount.trim() === '') {
+  if (draft.targetPeriod === 'day') {
     return draft.measure === 'count'
-      ? 'No goal: days still fill in, but there is nothing to streak against.'
-      : 'No goal: time is still tracked, with nothing to measure it against.'
+      ? 'Streak counts consecutive days you check it off.'
+      : 'Streak counts consecutive days you hit the hours.'
   }
-  if (draft.targetPeriod === 'day') return 'Streak counts consecutive days.'
   return `Streak counts consecutive ${draft.targetPeriod}s that hit the goal.`
 }

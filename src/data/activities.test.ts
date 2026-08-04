@@ -106,16 +106,16 @@ describe('saveActivity', () => {
     expect(saved.targetAmount).toBe(40 * 60 * 60 * 1000)
   })
 
-  it('lets the lead measure of an existing activity change', async () => {
+  it('lets the goal measure of an existing activity change', async () => {
     // It shapes no stored record any more — every activity can hold both check-offs and
-    // intervals — so the lead axis is just a display choice and may move.
+    // intervals — so the goal axis is just a scoring choice and may move.
     const activity = await saveActivity({
       name: 'Stretching',
       color: '#38bdf8',
       measure: 'count',
     })
 
-    const updated = await saveActivity({ ...activity, measure: 'duration', showTimer: true })
+    const updated = await saveActivity({ ...activity, measure: 'duration' })
 
     expect(updated.measure).toBe('duration')
   })
@@ -132,19 +132,23 @@ describe('saveActivity', () => {
     ).rejects.toThrow(/check-off, the timer, or both/)
   })
 
-  it('rejects a lead axis that is not shown', async () => {
-    await expect(
-      saveActivity({
-        name: 'Contradiction',
-        color: '#38bdf8',
-        measure: 'count',
-        showCheckoff: false,
-        showTimer: true,
-      }),
-    ).rejects.toThrow(/must be one the activity shows/)
+  it('allows a goal on an axis the card does not show', async () => {
+    // Display and goal are decoupled: a timer-only card can still be scored on the check-off.
+    const saved = await saveActivity({
+      name: 'Reading',
+      color: '#38bdf8',
+      measure: 'count',
+      showCheckoff: false,
+      showTimer: true,
+      targetAmount: 1,
+      targetPeriod: 'day',
+    })
+
+    expect(saved.measure).toBe('count')
+    expect([saved.showCheckoff, saved.showTimer]).toEqual([false, true])
   })
 
-  it('stores both show flags, so an activity can lead one axis and show the other', async () => {
+  it('stores both card-display flags independently of the measure', async () => {
     const gym = await saveActivity({
       name: 'Gym',
       color: '#38bdf8',
@@ -170,11 +174,10 @@ describe('saveActivity', () => {
       saveActivity({ ...activity, targetAmount: 9, targetPeriod: 'week' }),
     ).rejects.toThrow(/never be met/)
 
-    // The same nine as hours a week is a fine goal once the timer leads.
+    // The same nine as hours a week is a fine goal once the measure is time.
     const timed = await saveActivity({
       ...activity,
       measure: 'duration',
-      showTimer: true,
       targetAmount: 9,
       targetPeriod: 'week',
     })

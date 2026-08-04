@@ -18,19 +18,22 @@ These are the ones that look wrong until you know why. All are settled decisions
   do is compute two different numbers. The other exceptions are `formatAmount` (the last step
   before rendering, which has to put a unit on a bare number) and `FocusSummary` (the two measures
   genuinely have different things to say).
-- **Every activity can show both axes; `measure` only picks which one leads.** `showCheckoff` and
-  `showTimer` on an `Activity` decide which axes render — both default on for a new one, and turning
-  one off makes a pure habit or timer. Storage never cared: completions and entries were always both
-  allowed. `measure` is just the *lead* — the axis the dashboard card leads with, the top stats show,
-  and the single goal scores. It never reaches `lib/`: `dayAmounts` still branches on `measure`
-  alone, so the one-amount-per-day core and the streak/goals stay axis-agnostic. The non-lead axis is
-  pure display — the sheet renders both, lead first, and a timer-led activity's check-off grid reads
-  `completionAmounts` directly because its `dayAmounts` is milliseconds. Making the second axis a real
-  scored series (a second goal) is the thing deliberately *not* built: it would force `dayAmounts` to
-  compute two numbers and undo the whole measure-agnostic downstream. The flags are optional; absent,
-  `tracksTime` / `tracksCompletion` (in `data/types.ts`) fall back to `measure`, so a record from
-  before they existed stays the single-axis thing it was. Screens filter on those helpers, never on a
-  bare `measure ===`, so the dashboard, Today and Insights cannot drift into disagreeing.
+- **Every activity holds both axes; the sheet always shows both; the flags are the card's alone.**
+  Storage never cared — completions and entries were always both allowed on any activity. So the
+  activity sheet renders both the check-off grid and the timer for *every* activity, unconditionally;
+  it is the full view and branches on nothing. `showCheckoff` / `showTimer` decide only what the
+  card on the Activities list shows — both default on, turning one off just hides that axis from the
+  card. `measure` is a separate thing: the *scored* axis — the one the single goal, the streak and
+  the "total" are about, and the axis the sheet leads its layout with. The two are **decoupled**: a
+  card can show only the timer while the goal is scored on the check-off. `measure` never reaches
+  `lib/`: `dayAmounts` still branches on it alone, so the one-amount-per-day core and the
+  streak/goals stay axis-agnostic. A time-scored activity's check-off grid reads `completionAmounts`
+  directly, because its `dayAmounts` is milliseconds. A *second* scored series (two goals) is the
+  thing deliberately *not* built: it would force `dayAmounts` to compute two numbers and undo the
+  whole measure-agnostic downstream. The flags are optional; absent, `tracksTime` /
+  `tracksCompletion` (in `data/types.ts`) fall back to `measure`, so a record from before they
+  existed shows the single card axis it always did. The dashboard, Today and Insights filter their
+  *display* on those helpers, never on a bare `measure ===`, so they cannot drift into disagreeing.
 - **`HeatGrid` is for check-off activities only**, and takes a colour and a weekly target rather
   than an `Activity` so there is nothing in it to branch on. A contribution square is on or off,
   which throws away the quantity that is the whole point of a timed activity. Timed history lives
@@ -80,11 +83,13 @@ These are the ones that look wrong until you know why. All are settled decisions
   and uploads the merged export. There is no watermark and no server-side schema, so a new field
   on a type needs no migration. `syncToken` is device-local on purpose: it is the one value that
   must never travel inside the blob.
-- **An activity's `measure` — its lead axis — *can* change.** It once could not, because records
+- **An activity's `measure` — its scored axis — *can* change.** It once could not, because records
   were thought to be shaped by it; they are not (every activity may hold both check-offs and
-  intervals), so the lead is only a display choice. The one consequence is the goal: a days target
-  cannot be read as an hours one, so moving the lead across measures clears it. The form does that;
-  `saveActivity` enforces that the lead axis is one the activity actually shows.
+  intervals), so the measure is only a scoring choice. The one consequence is the goal: a days
+  target cannot be read as an hours one, so moving the measure across axes clears it. The form does
+  that. The measure is **not** tied to what the card shows — the goal can be scored on an axis the
+  card hides — so `saveActivity` enforces only that at least one axis is shown, not that the scored
+  one is.
 - **`activity-tint` never shares an element with `panel`.** The tint sets `background-color`, so
   it replaces the panel's fill instead of sitting on it. A card is two nested elements for this.
 - **Deleting an activity is a labelled button in its sheet, and only that.** There was a

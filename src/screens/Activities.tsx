@@ -32,7 +32,6 @@ import {
   type DateKey,
   type Entry,
   type Period,
-  tracksCompletion,
   tracksTime,
 } from '../data/types.ts'
 import { streaks, targetAt } from '../lib/accounting/goals.ts'
@@ -373,7 +372,8 @@ export default function Activities() {
                 blockBefore={blockBefore(entries, openActivity.id, blockStart, startedAt, now)}
                 inBlock={blockStart !== undefined}
                 entries={recentEntries(entries, openActivity.id)}
-                timedActivities={activities.filter(tracksTime)}
+                // Every activity can hold time now, so an entry can be moved onto any of them.
+                timedActivities={visible}
                 now={now}
                 onDayActivate={(dayKey) => void toggleCompletion(openActivity.id, dayKey)}
                 onStart={() => void startOrResume(openActivity.id)}
@@ -469,9 +469,9 @@ function blockBefore(
 type ActivityStats = {
   amounts: Map<DateKey, number>
   /**
-   * The contribution grid's amounts — the same as `amounts` for a check-off, but for a hybrid
-   * whose primary is a timer it is the check-offs, since `amounts` there is milliseconds. Empty
-   * for a plain timer, which draws no grid.
+   * The sheet's contribution grid amounts — always the check-offs, since the sheet always draws
+   * the grid. The same as `amounts` when the check-off is scored; the completions directly when
+   * time is, because `amounts` is then milliseconds.
    */
   gridAmounts: Map<DateKey, number>
   /** Progress inside the current period of the activity's own target. */
@@ -501,14 +501,11 @@ function summariseActivity(
   const days = horizon.flatMap((week) => dayWindowsIn(week))
   const amounts = dayAmounts(activity, entries, completions, days, now)
 
-  // The check-off grid's squares. When the check-off leads, `amounts` already is it; when the
-  // timer leads, `amounts` is milliseconds, so the squares come from the check-offs directly.
-  // Empty when the check-off axis is hidden, which is what stops the grid drawing at all.
-  const gridAmounts = !tracksCompletion(activity)
-    ? new Map<DateKey, number>()
-    : activity.measure === 'count'
-      ? amounts
-      : completionAmounts(activity.id, completions)
+  // The check-off grid's squares. The sheet always draws this grid, so it is always the
+  // check-offs: `amounts` already is them when the check-off is the scored axis; when time is,
+  // `amounts` is milliseconds, so the squares come from the completions directly.
+  const gridAmounts =
+    activity.measure === 'count' ? amounts : completionAmounts(activity.id, completions)
   const trackedTime = totalSince(entries, activity.id, horizon[0].start, now)
 
   // With no target of its own an activity is streaked by the day against any amount at all,
