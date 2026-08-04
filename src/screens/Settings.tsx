@@ -8,6 +8,7 @@
  */
 import { useRef, useState } from 'react'
 import Button from '../components/ui/Button.tsx'
+import { deleteAllData } from '../data/db.ts'
 import { getPref, setPref } from '../data/prefs.ts'
 import { syncNow } from '../data/sync.ts'
 import { exportCsv, exportJson, importJson } from '../data/transfer.ts'
@@ -17,8 +18,11 @@ import { toDateTimeInput } from '../lib/time.ts'
  * One status line at a time, tagged with the section that produced it. Without `section` a sync
  * failure reports itself under the Data buttons, which is where the reader is not looking.
  */
-type Section = 'data' | 'app' | 'sync'
+type Section = 'data' | 'app' | 'sync' | 'delete'
 type Status = { tone: 'ok' | 'error'; message: string; section: Section } | null
+
+/** The word the owner must type before the wipe is allowed to fire. */
+const DELETE_CONFIRMATION = 'confirm'
 
 export default function Settings() {
   const [status, setStatus] = useState<Status>(null)
@@ -29,6 +33,11 @@ export default function Settings() {
   // beneath it. `SyncAgent`'s background runs are not reflected until the screen is reopened,
   // which is the whole cost of not putting a device setting into Dexie.
   const [lastSyncAt, setLastSyncAt] = useState(() => getPref('lastSyncAt'))
+  // The delete gate is two steps: an initial button reveals the text input, and the wipe only
+  // fires once the owner has typed the confirmation word into it.
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleteConfirmation, setDeleteConfirmation] = useState('')
+  const deleteConfirmed = deleteConfirmation.trim().toLowerCase() === DELETE_CONFIRMATION
 
   /** Every button here can fail on a full disk or a bad file; none may leave the screen stuck. */
   async function run(section: Section, job: () => Promise<string>) {
@@ -77,6 +86,15 @@ export default function Settings() {
     // Clear the input so re-picking the same file fires `change` again.
     if (fileInput.current) fileInput.current.value = ''
   }
+
+  const deleteEverything = () =>
+    void run('delete', async () => {
+      await deleteAllData()
+      // Reset the gate so the section returns to its resting state behind the status line.
+      setConfirmingDelete(false)
+      setDeleteConfirmation('')
+      return 'Deleted all activities, entries and check-offs from this device.'
+    })
 
   return (
     // Mostly explanatory prose, so it is capped at a readable line length.
@@ -158,6 +176,39 @@ export default function Settings() {
             : `Last synced ${toDateTimeInput(lastSyncAt).replace('T', ' ')}.`}
         </p>
         <StatusLine status={status} section="sync" />
+      </Section>
+
+      <Section title="Delete all data">
+        <p className="text-sm text-ink-muted">
+          Permanently erase every activity, entry and check-off stored on this device. This cannot
+          be undone. Your sync token stays, so a device still holding this data would sync it back.
+        </p>
+        {!confirmingDelete ? (
+          <div className="mt-3">
+            <Button variant="danger" onClick={() => setConfirmingDelete(true)} disabled={busy}>
+              Delete all data
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              value={deleteConfirmation}
+              onChange={(event) => setDeleteConfirmation(event.target.value)}
+              aria-label={`Type ${DELETE_CONFIRMATION} to delete all data`}
+              placeholder={`Type ${DELETE_CONFIRMATION}`}
+              autoFocus
+              className="min-w-48 flex-1 rounded-lg bg-raised px-3 py-2 text-ink focus-ring"
+            />
+            <Button
+              variant="danger"
+              onClick={deleteEverything}
+              disabled={busy || !deleteConfirmed}
+            >
+              Delete everything
+            </Button>
+          </div>
+        )}
+        <StatusLine status={status} section="delete" />
       </Section>
     </section>
   )
