@@ -28,28 +28,36 @@
  * written `emerald-400` in Settings and `green-400` in Insights.
  */
 @theme {
-  --color-canvas: var(--color-slate-900);
-  --color-surface: var(--color-slate-800);
-  --color-raised: var(--color-slate-700);
-  --color-raised-hover: var(--color-slate-600);
-  --color-recess: var(--color-slate-900);
-  --color-line: var(--color-slate-700);
-  --color-line-subtle: var(--color-slate-800);
+  /**
+   * A true-black dark theme: the neutral ramp is `neutral` (chroma 0), not `slate`, so the
+   * canvas reads as black rather than navy. Everything is one step darker than the old
+   * slate mapping — canvas at `neutral-950`, cards a step up at `-900`, raised another at
+   * `-800` — which keeps the elevation order (canvas < surface < raised) legible above a
+   * near-black floor. Darker backgrounds only raise contrast for the light ink, so the ink
+   * tokens moved to `neutral` at matching lightness with no loss (see the tint note below).
+   */
+  --color-canvas: var(--color-neutral-950);
+  --color-surface: var(--color-neutral-900);
+  --color-raised: var(--color-neutral-800);
+  --color-raised-hover: var(--color-neutral-700);
+  --color-recess: var(--color-neutral-950);
+  --color-line: var(--color-neutral-800);
+  --color-line-subtle: var(--color-neutral-900);
 
   /**
    * Four steps, not the seven shades the screens had drifted into. slate-50, -100 and
    * -200 were all being used for primary text on the same surfaces, which is a
    * distinction no reader can see and every author has to guess at.
    */
-  --color-ink: var(--color-slate-100);
-  --color-ink-soft: var(--color-slate-300);
-  --color-ink-muted: var(--color-slate-400);
+  --color-ink: var(--color-neutral-100);
+  --color-ink-soft: var(--color-neutral-300);
+  --color-ink-muted: var(--color-neutral-400);
   /**
-   * 3.7:1 on the canvas, so this is below the 4.5:1 floor by construction: it is for a
+   * 4.2:1 on the canvas, so this is below the 4.5:1 floor by construction: it is for a
    * decorative glyph or a chart guide line, never for text a reader has to read. Three of
    * its first four uses were text, and all three moved up to `ink-muted`.
    */
-  --color-ink-subtle: var(--color-slate-500);
+  --color-ink-subtle: var(--color-neutral-500);
 
   --color-accent: var(--color-sky-600);
   --color-accent-hover: var(--color-sky-500);
@@ -76,7 +84,7 @@
   --color-danger: var(--color-rose-400);
 
   /* The dot and meter fill for an activity that no longer exists. */
-  --color-orphan: var(--color-slate-500);
+  --color-orphan: var(--color-neutral-500);
 
   --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
 
@@ -234,11 +242,12 @@ html {
  *
  * The 8% is a ceiling, not a preference, and it is set by the *dimmest* text on the
  * tint rather than the brightest. Worst case the owner picks white: compositing it at
- * alpha `a` over `--color-surface` gives a background luminance of `0.022 + 0.978a`, and
- * a foreground needs `(Y_text + 0.05) / (Y_bg + 0.05) ≥ 4.5`. That allows `a ≤ 0.15`
- * under `--color-ink` (0.909), but only `a ≤ 0.087` under `--color-ink-soft` (0.660) and
- * a hopeless `a ≤ 0.019` under `--color-ink-muted` (0.360) — which is already close to
- * its floor on the untinted surface.
+ * alpha `a` over `--color-surface` gives a background luminance of `0.009 + 0.991a`, and
+ * a foreground needs `(Y_text + 0.05) / (Y_bg + 0.05) ≥ 4.5`. That allows `a ≤ 0.16`
+ * under `--color-ink` (0.913), but only `a ≤ 0.10` under `--color-ink-soft` (0.659) and
+ * a hopeless `a ≤ 0.032` under `--color-ink-muted` (0.355). The black-theme surface is
+ * darker than the old slate one, so every ceiling rose — 8% used to be the tight fit
+ * under `ink-soft` and now clears it with room.
  *
  * So: 8%, and nothing dimmer than `--color-ink-soft` goes on a tint. Measured rather
  * than derived — see the contrast probe in the Tracker's verification. The old
