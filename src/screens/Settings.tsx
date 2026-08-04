@@ -159,6 +159,8 @@ export default function Settings() {
         </p>
         <StatusLine status={status} section="sync" />
       </Section>
+
+      <p className="mt-4 text-center text-2xs text-ink-muted">Version {__APP_VERSION__}</p>
     </section>
   )
 }

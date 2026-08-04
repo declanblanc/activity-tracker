@@ -37,6 +37,9 @@ export default defineConfig({
       },
     }),
   ],
+  // Bake the package.json version in at build time so the Settings screen shows it and it
+  // can never drift from the real number — npm sets `npm_package_version` for every script.
+  define: { __APP_VERSION__: JSON.stringify(process.env.npm_package_version) },
   // Vite picks its own port when the default is taken, which loses whichever port the
   // surrounding tooling assigned. Honour `PORT` when it is set.
   server: { port: Number(process.env.PORT) || 5173 },
