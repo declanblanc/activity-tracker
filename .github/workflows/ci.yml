@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   checks:
     runs-on: ubuntu-latest
@@ -18,3 +21,29 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+
+  deploy:
+    needs: checks
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # On the job rather than the workflow, so only deploys serialise and check runs on other
+    # branches stay independent. Queued rather than cancelled: killing a half-finished upload
+    # is worse than waiting for it.
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Idempotent — an already-applied migration is a no-op — so this runs on every deploy
+          # rather than needing anyone to remember it.
+          preCommands: npx wrangler d1 migrations apply activity-tracker --remote
