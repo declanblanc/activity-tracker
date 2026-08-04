@@ -33,15 +33,17 @@ export type DateKey = string
 export type Period = 'day' | 'week' | 'month'
 
 /**
- * How an activity is recorded — the only field that changes what the rest of the app does
- * with one.
+ * Which axis *leads* an activity — the one the dashboard card, the top stats and the single
+ * goal are about. Not what it stores: every activity can store both `Completion` rows and
+ * `Entry` intervals; `showCheckoff` / `showTimer` decide which are shown.
  *
- * - `duration` runs a timer and stores `Entry` intervals.
- * - `count` is checked off once per local day and stores `Completion` rows.
+ * - `count` leads with the check-off grid, and its goal counts **days**.
+ * - `duration` leads with the timer, and its goal counts **milliseconds**.
  *
- * Everything else — icon, colour, target, archive, order, soft delete, the heat grid, the
- * streak, the goals panel — is shared between them. That sharing is the whole point of
- * having one entity instead of two.
+ * `dayAmounts` still branches on this one field and nowhere else, so everything downstream —
+ * streaks, the goals panel — sees one amount per day and stays axis-agnostic. Unlike before,
+ * `measure` *can* change: it no longer shapes any stored record, only which axis leads, so
+ * flipping it is safe (it clears a goal whose unit no longer applies).
  */
 export type Measure = 'count' | 'duration'
 
@@ -65,6 +67,20 @@ export type Activity = {
    */
   targetAmount?: number
   targetPeriod?: Period
+  /**
+   * Which axes this activity shows: the check-off grid, the timer, or both.
+   *
+   * Every activity *can* record both — the storage layer never guarded it — so these are a
+   * display choice, not a data one. Both default on for a new activity; turning one off makes
+   * a pure habit or a pure timer. `measure` picks which of the shown axes *leads* (the card,
+   * the top stats, the one goal); the other renders display-only in the sheet.
+   *
+   * Optional so no stored record needs a migration: when absent, `tracksCompletion` /
+   * `tracksTime` fall back to `measure`, so an activity from before this existed stays exactly
+   * the single-axis thing it was until it is next edited. See those helpers below.
+   */
+  showCheckoff?: boolean
+  showTimer?: boolean
   archived: boolean
   sortOrder: number
   createdAt: number
@@ -86,9 +102,13 @@ export type ActivityInput = {
   description?: string
   color: string
   icon?: string
+  /** The lead axis. May change on update now — see `Measure`. */
   measure: Measure
   targetAmount?: number
   targetPeriod?: Period
+  /** Which axes to show. See `Activity.showCheckoff`. */
+  showCheckoff?: boolean
+  showTimer?: boolean
   archived?: boolean
 }
 
@@ -160,3 +180,19 @@ export const completionId = (activityId: string, day: DateKey) => `${activityId}
 export const isOpen = (entry: Entry) => entry.endedAt === OPEN_ENTRY_END
 
 export const isLive = (record: { deletedAt: number }) => record.deletedAt === NOT_DELETED
+
+/**
+ * Whether the activity shows the timer axis.
+ *
+ * The one definition every screen filters on, so the dashboard, Today and Insights never
+ * drift into disagreeing about which activities can hold an entry. Falls back to `measure`
+ * when `showTimer` is unset, so a record from before the flags existed behaves as it always
+ * did. See `Activity.showTimer`.
+ */
+export const tracksTime = (activity: Pick<Activity, 'measure' | 'showTimer'>): boolean =>
+  activity.showTimer ?? activity.measure === 'duration'
+
+/** Whether the activity shows the check-off axis. Falls back to `measure`. See `tracksTime`. */
+export const tracksCompletion = (
+  activity: Pick<Activity, 'measure' | 'showCheckoff'>,
+): boolean => activity.showCheckoff ?? activity.measure === 'count'

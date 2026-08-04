@@ -130,6 +130,21 @@ describe('exportJson', () => {
     expect(await db.entries.orderBy('id').toArray()).toEqual(before)
     expect(await db.activities.toArray()).toEqual([activity()])
   })
+
+  it('round-trips the show flags, and imports a file that predates them', async () => {
+    await db.activities.add(activity({ showCheckoff: true, showTimer: true }))
+    const backup = await exportJson()
+    await db.activities.clear()
+    await importJson(backup)
+    const restored = await db.activities.get('activity-1')
+    expect([restored?.showCheckoff, restored?.showTimer]).toEqual([true, true])
+
+    // A file written before the flags existed carries neither, and must still import.
+    await db.activities.clear()
+    await importJson(file())
+    const old = await db.activities.get('activity-1')
+    expect([old?.showCheckoff, old?.showTimer]).toEqual([undefined, undefined])
+  })
 })
 
 describe('exportCsv', () => {

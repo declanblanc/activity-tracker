@@ -51,12 +51,24 @@ export async function saveActivity(input: ActivityInput): Promise<Activity> {
 
   const existing = input.id ? await getActivity(input.id) : undefined
 
-  // The measure of an existing activity is fixed. Its records are shaped by it — a count
-  // activity has dated check-offs and a duration one has intervals — so a change would
-  // either invent start and end times a check-off never had or discard every interval. It
-  // would also silently redenominate the target, turning "3 days a week" into three hours.
-  // The escape hatch is archive-and-add, which keeps the history and has no ambiguity.
-  const measure = existing?.measure ?? input.measure
+  // The lead axis. Changeable now — it shapes no stored record, only which axis the card and
+  // the goal are about — so a save may move it. The form clears the goal when it does, since a
+  // days target cannot be read as an hours one.
+  const measure = input.measure
+
+  // Which axes are shown. Absent falls back to the lead, which is how a record from before the
+  // flags existed keeps behaving as the single-axis thing it was.
+  const showCheckoff = input.showCheckoff ?? existing?.showCheckoff
+  const showTimer = input.showTimer ?? existing?.showTimer
+  const showsCheckoff = showCheckoff ?? measure === 'count'
+  const showsTimer = showTimer ?? measure === 'duration'
+  if (!showsCheckoff && !showsTimer) {
+    throw new Error('An activity must show the check-off, the timer, or both.')
+  }
+  // The goal is scored on the lead axis, so that axis has to be one the activity shows.
+  if ((measure === 'count' && !showsCheckoff) || (measure === 'duration' && !showsTimer)) {
+    throw new Error('The goal’s axis must be one the activity shows.')
+  }
 
   if (input.targetAmount !== undefined) {
     // Negated rather than `<= 0` so a NaN from a half-typed form field is rejected too.
@@ -80,6 +92,8 @@ export async function saveActivity(input: ActivityInput): Promise<Activity> {
     color: input.color,
     icon: input.icon?.trim() || undefined,
     measure,
+    showCheckoff,
+    showTimer,
     targetAmount: input.targetAmount,
     targetPeriod: input.targetPeriod,
     archived: input.archived ?? false,
