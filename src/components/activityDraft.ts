@@ -13,7 +13,11 @@ export type Draft = {
   description: string
   icon: string
   color: string
+  /** The lead axis: the one the card leads with, and the unit the goal is in. */
   measure: Measure
+  /** Which axes to show. At least one is always on. See `Activity.showCheckoff`. */
+  showCheckoff: boolean
+  showTimer: boolean
   /** As typed: hours for a duration, days for a count. Empty means no goal. */
   targetAmount: string
   targetPeriod: Period
@@ -25,8 +29,12 @@ export function blankDraft(color: string): Draft {
     description: '',
     icon: '💪',
     color,
+    // A new activity shows both axes and leads with the check-off, the commonest starting
+    // point. Either axis can be turned off, which is how it becomes a pure habit or timer.
     measure: 'count',
-    // A check-off activity defaults to every day, which is what almost every habit is.
+    showCheckoff: true,
+    showTimer: true,
+    // Leading with the check-off, it defaults to every day, which is what almost every habit is.
     targetAmount: '1',
     targetPeriod: 'day',
   }
@@ -38,6 +46,8 @@ export function draftFrom(activity: {
   icon?: string
   color: string
   measure: Measure
+  showCheckoff?: boolean
+  showTimer?: boolean
   targetAmount?: number
   targetPeriod?: Period
 }): Draft {
@@ -47,6 +57,10 @@ export function draftFrom(activity: {
     icon: activity.icon ?? '💪',
     color: activity.color,
     measure: activity.measure,
+    // Fall back to the lead for a record from before the flags existed, so editing an old
+    // activity shows exactly the single axis it already had, with the other off.
+    showCheckoff: activity.showCheckoff ?? activity.measure === 'count',
+    showTimer: activity.showTimer ?? activity.measure === 'duration',
     targetAmount:
       activity.targetAmount === undefined
         ? ''
@@ -67,6 +81,8 @@ export function toInput(draft: Draft, id?: string): ActivityInput {
     icon: draft.icon,
     color: draft.color,
     measure: draft.measure,
+    showCheckoff: draft.showCheckoff,
+    showTimer: draft.showTimer,
     targetAmount:
       amount === undefined ? undefined : draft.measure === 'duration' ? amount * HOUR : amount,
     targetPeriod: amount === undefined ? undefined : draft.targetPeriod,
