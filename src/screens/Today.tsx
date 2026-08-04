@@ -9,7 +9,7 @@ import EmptyState from '../components/ui/EmptyState.tsx'
 import { Modal } from '../components/ui/Modal.tsx'
 import { getActivities } from '../data/activities.ts'
 import { getEntriesInRange } from '../data/entries.ts'
-import { isOpen, type Activity, type Entry } from '../data/types.ts'
+import { isOpen, tracksTime, type Activity, type Entry } from '../data/types.ts'
 import { perActivityTotals } from '../lib/accounting/totals.ts'
 import { formatDuration, formatTime } from '../lib/format.ts'
 import { assignLanes, laneSpans } from '../lib/lanes.ts'
@@ -69,9 +69,9 @@ export default function Today() {
 
   if (!entries || !activities) return null
 
-  // Entries belong to timed activities only, so this screen is about them. A check-off has no
-  // interval to draw; its history is the grid on the Activities screen.
-  const timed = activities.filter((activity) => activity.measure === 'duration')
+  // Entries belong to activities that track time — timers and hybrid check-offs — so this screen
+  // is about them. A plain check-off has no interval to draw; its history is the Activities grid.
+  const timed = activities.filter(tracksTime)
 
   const byId = new Map(activities.map((activity) => [activity.id, activity]))
   // Clip first, then pack: two entries that overlap only outside today must not be pushed into
