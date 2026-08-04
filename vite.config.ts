@@ -5,18 +5,15 @@ import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 /**
- * `<package version>+<short commit SHA>`, e.g. `0.1.0+a1b2c3d`. The SHA is what makes every
- * push to main a distinct version with no one having to remember to bump anything — the
- * semver stays for human-meaningful releases, the SHA moves on every commit. Falls back to
- * the bare package version when there is no git checkout (a source-tarball build).
+ * The short commit SHA, e.g. `a1b2c3d`. It is the whole version the app shows: it moves on
+ * every commit, so every push to main is a distinct build with nothing to remember to bump.
+ * Falls back to `dev` when there is no git checkout (a source-tarball build).
  */
 function appVersion(): string {
-  const packageVersion = process.env.npm_package_version ?? '0.0.0'
   try {
-    const sha = execSync('git rev-parse --short HEAD').toString().trim()
-    return `${packageVersion}+${sha}`
+    return execSync('git rev-parse --short HEAD').toString().trim()
   } catch {
-    return packageVersion
+    return 'dev'
   }
 }
 
