@@ -3,8 +3,8 @@ import { lazy, Suspense, type ComponentType, type ReactElement } from 'react'
 import { NavLink, Route, Routes } from 'react-router'
 import ForgottenPrompt from './components/ForgottenPrompt.tsx'
 import SyncAgent from './components/SyncAgent.tsx'
-import UpdatePrompt from './components/UpdatePrompt.tsx'
 import Activities from './screens/Activities.tsx'
+import DeletedActivities from './screens/DeletedActivities.tsx'
 import Settings from './screens/Settings.tsx'
 import Today from './screens/Today.tsx'
 
@@ -71,6 +71,9 @@ export default function App() {
             {SCREENS.map(({ path, element }) => (
               <Route key={path} path={path} element={element} />
             ))}
+            {/* Reached from Settings, not the tab bar: recovering a deleted activity is a rare
+                errand and does not earn a fifth tab. */}
+            <Route path="/deleted" element={<DeletedActivities />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
@@ -79,7 +82,6 @@ export default function App() {
       {/* Mounted here, not on a screen: a forgotten timer is worth raising whichever screen the
           app happens to open on. */}
       <ForgottenPrompt />
-      <UpdatePrompt />
       {/* Renders nothing. Mounted here so sync runs on whichever screen the app opens on. */}
       <SyncAgent />
     </div>

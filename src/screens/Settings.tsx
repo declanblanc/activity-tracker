@@ -7,6 +7,7 @@
  * `data/transfer.ts` — this screen knows nothing about sentinels, formats or transactions.
  */
 import { useRef, useState } from 'react'
+import { Link } from 'react-router'
 import Button from '../components/ui/Button.tsx'
 import { deleteAllData } from '../data/db.ts'
 import { getPref, setPref } from '../data/prefs.ts'
@@ -174,6 +175,20 @@ export default function Settings() {
         <StatusLine status={status} section="data" />
       </Section>
 
+      <Section title="Deleted activities">
+        <p className="text-sm text-ink-muted">
+          A deleted activity keeps its history and can be brought back at any time.
+        </p>
+        <div className="mt-3">
+          <Link
+            to="/deleted"
+            className="focus-ring inline-flex min-h-11 items-center gap-2 rounded-lg bg-raised px-4 text-sm font-medium text-ink hover:bg-raised-hover"
+          >
+            View deleted activities
+          </Link>
+        </div>
+      </Section>
+
       <Section title="App">
         <p className="text-sm text-ink-muted">
           The app is cached on this device and works with no network. Updates install in the
@@ -261,9 +276,9 @@ export default function Settings() {
 }
 
 /**
- * Ask the service worker to look for a new build now, rather than waiting for the
- * hourly check `UpdatePrompt` runs. Finding one is that component's business — it is
- * the thing listening — so this only reports whether the search turned anything up.
+ * Ask the service worker to look for a new build now. A found update installs and waits;
+ * there is no in-app prompt for it, so it takes over the next time the app is reopened.
+ * This only reports whether the search turned anything up.
  */
 async function checkForUpdate(): Promise<string> {
   const registration = await navigator.serviceWorker?.getRegistration()

@@ -113,6 +113,23 @@ export async function softDeleteActivity(id: string): Promise<void> {
   await db.activities.update(id, { deletedAt: now, updatedAt: now })
 }
 
+/** Deleted activities, most-recently-deleted first, for the restore page. */
+export async function getDeletedActivities(): Promise<Activity[]> {
+  const all = await db.activities.toArray()
+  return all
+    .filter((activity) => activity.deletedAt !== NOT_DELETED)
+    .sort((a, b) => b.deletedAt - a.deletedAt)
+}
+
+/**
+ * Lift the tombstone off an activity. Its entries and check-offs were never touched, so it
+ * comes back with its history intact. The fresh `updatedAt` makes the restore win on the next
+ * sync, the same way the delete that stamped it did.
+ */
+export async function restoreActivity(id: string): Promise<void> {
+  await db.activities.update(id, { deletedAt: NOT_DELETED, updatedAt: Date.now() })
+}
+
 /** Rewrite `sortOrder` to match the given order. Ids not listed are left where they are. */
 export async function reorderActivities(orderedIds: string[]): Promise<void> {
   const now = Date.now()

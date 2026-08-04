@@ -6,7 +6,9 @@ import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   getActivities,
+  getDeletedActivities,
   reorderActivities,
+  restoreActivity,
   saveActivity,
   softDeleteActivity,
 } from './activities.ts'
@@ -194,6 +196,38 @@ describe('softDeleteActivity', () => {
     expect(await getActivities(true)).toEqual([])
     expect((await db.activities.get(activity.id))?.deletedAt).toBeGreaterThan(NOT_DELETED)
     expect((await db.entries.get(running.id))?.endedAt).toBeLessThan(OPEN_ENTRY_END)
+  })
+})
+
+describe('getDeletedActivities and restoreActivity', () => {
+  it('lists only deleted activities, most-recently-deleted first', async () => {
+    const live = await create('Sleeping')
+    const first = await create('Deep Work')
+    const second = await create('Exercise')
+    await softDeleteActivity(first.id)
+    await softDeleteActivity(second.id)
+
+    const deleted = await getDeletedActivities()
+
+    expect(deleted.map((a) => a.name)).toEqual(['Exercise', 'Deep Work'])
+    expect(deleted).toHaveLength(2)
+    // The live one is nowhere in the list.
+    expect(deleted.some((a) => a.id === live.id)).toBe(false)
+  })
+
+  it('lifts the tombstone and bumps updatedAt so the restore wins the next sync', async () => {
+    const activity = await create('Sleeping')
+    await softDeleteActivity(activity.id)
+    const deletedAt = (await db.activities.get(activity.id))?.updatedAt ?? 0
+
+    await restoreActivity(activity.id)
+
+    const restored = await db.activities.get(activity.id)
+    expect(restored?.deletedAt).toBe(NOT_DELETED)
+    expect(restored?.updatedAt).toBeGreaterThanOrEqual(deletedAt)
+    // Back on the dashboard, and no longer in the deleted list.
+    expect((await getActivities()).map((a) => a.name)).toEqual(['Sleeping'])
+    expect(await getDeletedActivities()).toEqual([])
   })
 })
 
