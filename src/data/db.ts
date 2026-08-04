@@ -31,3 +31,20 @@ export class ActivityTrackerDB extends Dexie {
 }
 
 export const db = new ActivityTrackerDB()
+
+/**
+ * Erase every domain record on this device.
+ *
+ * ponytail: an intentional hard delete — the one place in `data/` that does not soft-delete.
+ * The owner has explicitly asked to wipe everything, so leaving `deletedAt` tombstones behind
+ * would defeat the request. Sync is last-write-wins over a whole-database blob, so this only
+ * clears the local copy; a later sync re-merges from whatever devices still hold data. Device
+ * prefs — the sync token included — are left untouched.
+ */
+export async function deleteAllData(): Promise<void> {
+  await db.transaction('rw', db.activities, db.entries, db.completions, async () => {
+    await db.activities.clear()
+    await db.entries.clear()
+    await db.completions.clear()
+  })
+}
