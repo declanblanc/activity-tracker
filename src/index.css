@@ -97,9 +97,8 @@ html {
 
 @layer base {
   /**
-   * Almost nothing here is worth the tap-and-hold a text selection costs on a phone, and
-   * the activity card's swipe-to-delete actively fights the browser's own selection
-   * behaviour — a horizontal drag would otherwise start selecting the card's label.
+   * Almost nothing here is worth the tap-and-hold a text selection costs on a phone: a
+   * dragged finger that starts selecting a card's label is noise, not a feature.
    */
   body {
     -webkit-user-select: none;

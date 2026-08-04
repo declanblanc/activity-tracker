@@ -243,8 +243,8 @@ export default function ActivitySheet({
         <Button variant="quiet" onClick={onArchive} className="ml-auto">
           {activity.archived ? 'Unarchive' : 'Archive'}
         </Button>
-        {/* Also the only keyboard- and desktop-reachable delete: the swipe gesture on the card
-            is a shortcut, never the sole route to a destructive action. */}
+        {/* The only route to a delete. A destructive action gets a deliberate, labelled
+            button, not a gesture the card can misread. */}
         <Button variant="danger" onClick={onDelete}>
           Delete
         </Button>

@@ -296,7 +296,6 @@ export default function Activities() {
           const shared = {
             activity,
             onOpen: () => setOpenId(activity.id),
-            onDelete: () => void remove(activity),
           }
 
           return activity.measure === 'count' ? (

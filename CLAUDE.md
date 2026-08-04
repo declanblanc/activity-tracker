@@ -59,8 +59,12 @@ These are the ones that look wrong until you know why. All are settled decisions
   enforceable by the start/stop path alone.
 - **An activity's `measure` cannot change** once it exists. Its records are shaped by it, and the
   goal's unit means something different under each. Archive and add a new one instead.
-- **The swiping surface of a card must be opaque.** `activity-tint` sets `background-color`, so
-  putting it on the swipe surface replaces `panel`'s fill and the delete underlay shows through.
+- **`activity-tint` never shares an element with `panel`.** The tint sets `background-color`, so
+  it replaces the panel's fill instead of sitting on it. A card is two nested elements for this.
+- **Deleting an activity is a labelled button in its sheet, and only that.** There was a
+  swipe-to-delete on the card; it read `pointercancel` as a completed swipe, and since a touch
+  that turns into a vertical scroll cancels the pointer, scrolling the dashboard deleted
+  activities. A destructive action does not hang off a gesture the card has to guess at.
 - **The app shell is `h-dvh` and `<main>` is the scroll container**, not the document. Today's
   timeline asks for exactly the height left over, and a percentage height only resolves inside a
   flex item whose own height is definite — `min-h-dvh` is not. Any screen taller than the viewport

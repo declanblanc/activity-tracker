@@ -12,12 +12,11 @@ import { formatAmount, formatDuration, formatElapsed, formatTime } from '../lib/
 import { weeksThatFit } from '../lib/heatStrip.ts'
 import { useNow } from '../lib/useNow.ts'
 import { HeatGrid } from './HeatGrid.tsx'
-import SwipeToDelete from './SwipeToDelete.tsx'
 import { IconButton } from './ui/Button.tsx'
 
 /**
- * The dashboard's cards. Two components rather than one with a branch, over a shared shell,
- * a shared heat strip and a shared swipe gesture.
+ * The dashboard's cards. Two components rather than one with a branch, over a shared shell
+ * and a shared heat strip.
  *
  * A single component would take eight props a check-off card ignores and one a timed card
  * ignores, and a discriminated prop union cannot narrow from a nested `activity.measure`, so
@@ -36,8 +35,7 @@ export const CARD_MAX_WEEKS = 26
  *
  * The dashboard is a glance: a strip that has to be scrolled to reach today costs more than
  * the history it holds, and the whole year is one tap away in the detail sheet. So the card
- * asks for what fits and nothing more — which is also what keeps a horizontally-scrolling
- * strip out of a horizontally-swiping card.
+ * asks for what fits and nothing more.
  */
 function useFittingWeeks(max: number) {
   const strip = useRef<HTMLDivElement>(null)
@@ -61,7 +59,6 @@ function useFittingWeeks(max: number) {
 type Shared = {
   activity: Activity
   onOpen: () => void
-  onDelete: () => void
 }
 
 const streakLabel = (length: number, unit: 'day' | 'week') =>
@@ -89,7 +86,7 @@ function goalSummary(
 }
 
 /**
- * The card shell: the swipe surface, the identity block and the one control beside it.
+ * The card shell: the surface, the identity block and the one control beside it.
  *
  * Anything below that is the measure's own business — which in practice means the check-off card's
  * heat strip, since a timed card has nothing a grid could honestly say.
@@ -97,7 +94,6 @@ function goalSummary(
 function CardShell({
   activity,
   onOpen,
-  onDelete,
   summary,
   tinted = false,
   action,
@@ -109,15 +105,11 @@ function CardShell({
   children?: ReactNode
 }) {
   return (
-    // The swiping surface must be **opaque**, and `panel` is what makes it so. `activity-tint`
-    // cannot go here: it sets `background-color` too, so it would replace the panel's fill with
-    // a translucent one and the red delete underlay would show through a card that is merely
-    // running. The tint goes on the inner wrapper instead, which is why the padding does too —
-    // it has to cover the whole card for the tint to.
-    <SwipeToDelete
-      onDelete={onDelete}
-      className={`panel ${activity.archived ? 'opacity-50' : ''}`}
-    >
+    // `panel` supplies the surface, and `activity-tint` cannot join it here: the tint sets
+    // `background-color` too, so it would replace the panel's fill rather than sit on it. The
+    // tint goes on the inner wrapper instead, which is why the padding does too — it has to
+    // cover the whole card for the tint to.
+    <div className={`panel ${activity.archived ? 'opacity-50' : ''}`}>
       {/* The activity's colour reaches the card through one custom property, and only as a
           tint, a rail and a dot — never under text. See `activity-tint` in index.css. */}
       <div
@@ -162,7 +154,7 @@ function CardShell({
 
         {children}
       </div>
-    </SwipeToDelete>
+    </div>
   )
 }
 
