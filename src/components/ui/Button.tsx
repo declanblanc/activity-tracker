@@ -16,8 +16,19 @@ const VARIANTS = {
   primary: 'bg-accent text-on-accent enabled:hover:bg-accent-hover',
   /** Everything else with a surface. */
   quiet: 'bg-raised text-ink enabled:hover:bg-raised-hover',
-  /** A control that should not draw the eye until it is looked for. */
-  ghost: 'text-ink-muted enabled:hover:bg-raised enabled:hover:text-ink',
+  /**
+   * A control that should not draw the eye until it is looked for.
+   *
+   * A ghost toggle is the one variant whose `aria-pressed` had nothing to show: no surface
+   * to fill, and on a phone its label is `sr-only`, so "Compact" and "Reorder" changed
+   * nothing visible when tapped. On now reads as the `quiet` surface with accent text —
+   * the same accent-as-foreground the active tab uses, and not a second filled accent
+   * button competing with the one primary. The hover pair is not redundant: `ghost`'s own
+   * `hover:text-ink` is more specific than a bare `aria-pressed:`, so without it the state
+   * drops out from under the cursor that is pointing at it.
+   */
+  ghost:
+    'text-ink-muted enabled:hover:bg-raised enabled:hover:text-ink aria-pressed:bg-raised aria-pressed:text-accent-ink aria-pressed:enabled:hover:bg-raised-hover aria-pressed:enabled:hover:text-accent-ink',
   /** Destructive, and deliberately not a filled red button: it sits beside Save. */
   danger: 'bg-raised text-danger enabled:hover:bg-raised-hover',
 } as const
