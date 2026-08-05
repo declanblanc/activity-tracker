@@ -8,11 +8,11 @@ import {
 } from 'react'
 import type { Activity, DateKey } from '../data/types.ts'
 import { targetAt } from '../lib/accounting/goals.ts'
-import { formatAmount, formatDuration, formatElapsed, formatTime } from '../lib/format.ts'
+import { formatAmount } from '../lib/format.ts'
 import { GAP, SQUARE, weeksThatFit } from '../lib/heatStrip.ts'
 import { formatKey, shiftKey } from '../lib/time.ts'
-import { useNow } from '../lib/useNow.ts'
 import { HeatGrid } from './HeatGrid.tsx'
+import { TimerReading } from './TimerReading.tsx'
 import { IconButton } from './ui/Button.tsx'
 
 /**
@@ -312,43 +312,25 @@ export function CountCard({
  * trend. It is also why
  * this card is shorter than a check-off card, which the grid's `items-start` allows for.
  *
- * The number on the card is its **block**: the run from the moment the timer was started to the
- * moment it is stopped, carried across any number of pauses. Pausing for lunch leaves it counting
- * on from 3h rather than resetting; stopping ends the block, so the next start begins a fresh one
- * at zero. Both write exactly the same thing, a closed entry — only the block boundary tells them
- * apart, which is why it lives in `prefs`.
+ * The reading is the session and the day — see `TimerReading`. The card says nothing about the
+ * **block** (the run from Start to Stop that survives every pause); the block is still what the
+ * Stop button ends, and so still what tells that button apart from Pause.
  */
 export function DurationCard({
   startedAt,
-  blockBefore,
-  inBlock,
   todayTotal,
-  thisWeek,
-  streak,
-  total,
+  inBlock,
   onStart,
   onPause,
   onStop,
   ...shared
 }: Shared & {
-  /** Present exactly when the activity is running. */
+  /** Present exactly when the activity is running: when the current session began. */
   startedAt?: number
-  /**
-   * Tracked time in the current block, pauses excluded and **not** counting the stretch that
-   * is running right now.
-   *
-   * Excluding it is what lets the card tick once a second on its own: it adds `now -
-   * startedAt` itself, so the reading advances between the screen's slower refreshes instead
-   * of freezing between them. When nothing is running this is the whole block.
-   */
-  blockBefore: number
+  /** Time logged against this activity today, the running session included. */
+  todayTotal: number
   /** Whether a block is open at all — false once stopped, and before the first start. */
   inBlock: boolean
-  /** Tracked time against this activity today, which is what an idle card reports. */
-  todayTotal: number
-  thisWeek: number
-  streak: number
-  total: number
   onStart: () => void
   onPause: () => void
   onStop: () => void
@@ -360,18 +342,7 @@ export function DurationCard({
     <CardShell
       {...shared}
       tinted={running}
-      summary={
-        <DurationSummary
-          activity={activity}
-          startedAt={startedAt}
-          blockBefore={blockBefore}
-          inBlock={inBlock}
-          todayTotal={todayTotal}
-          thisWeek={thisWeek}
-          streak={streak}
-          total={total}
-        />
-      }
+      summary={<TimerReading startedAt={startedAt} todayTotal={todayTotal} />}
       action={
         <>
           <IconButton
@@ -399,44 +370,4 @@ export function DurationCard({
       }
     />
   )
-}
-
-/**
- * The live half of a timed card's summary line.
- *
- * A component for exactly one reason: it owns the once-a-second tick. Hoisting that to the
- * screen would re-render every card on the dashboard every second, most of them check-off
- * cards with nothing on them that moves.
- */
-function DurationSummary({
-  activity,
-  startedAt,
-  blockBefore,
-  inBlock,
-  todayTotal,
-  thisWeek,
-  streak,
-  total,
-}: {
-  activity: Activity
-  startedAt?: number
-  blockBefore: number
-  inBlock: boolean
-  todayTotal: number
-  thisWeek: number
-  streak: number
-  total: number
-}) {
-  const now = useNow(1000)
-
-  if (startedAt !== undefined) {
-    // The running stretch is measured here rather than handed in, so the reading advances on
-    // this component's own tick instead of freezing until the screen next refreshes.
-    return `${formatElapsed(blockBefore + (now - startedAt))} since ${formatTime(startedAt)}`
-  }
-  if (inBlock) return `${formatDuration(blockBefore)} so far, paused`
-  if (targetAt(activity, 'week') !== null || streak > 0) {
-    return goalSummary(activity, thisWeek, streak, total)
-  }
-  return todayTotal > 0 ? `${formatDuration(todayTotal)} today` : 'Not started today'
 }

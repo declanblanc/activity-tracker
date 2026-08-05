@@ -13,11 +13,11 @@ import { useState, type CSSProperties, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { isOpen, type Activity, type DateKey, type Entry } from '../data/types.ts'
 import { targetAt } from '../lib/accounting/goals.ts'
-import { formatAmount, formatDuration, formatElapsed, formatTime } from '../lib/format.ts'
-import { useNow } from '../lib/useNow.ts'
+import { formatAmount, formatDuration, formatTime } from '../lib/format.ts'
 import EntryForm from './EntryForm.tsx'
 import { blankDraft, draftFrom, type Draft } from './entryDraft.ts'
 import { HeatGrid } from './HeatGrid.tsx'
+import { TimerReading } from './TimerReading.tsx'
 import Button, { IconButton } from './ui/Button.tsx'
 import Stat from './ui/Stat.tsx'
 
@@ -53,7 +53,7 @@ export default function ActivitySheet({
   total,
   trackedTime,
   startedAt,
-  blockBefore,
+  todayTotal,
   inBlock,
   onDayActivate,
   onStart,
@@ -88,8 +88,11 @@ export default function ActivitySheet({
   total: number
   /** Time tracked over the horizon — shown beside a hybrid check-off's entry list. */
   trackedTime: number
+  /** Present exactly when the activity is running: when the current session began. */
   startedAt?: number
-  blockBefore: number
+  /** Time logged against this activity today, the running session included. */
+  todayTotal: number
+  /** Whether a block is open at all — what the Stop button has to end. */
   inBlock: boolean
   onDayActivate: (day: DateKey) => void
   onStart: () => void
@@ -163,7 +166,7 @@ export default function ActivitySheet({
             <Square className="size-4" />
           </IconButton>
           <p className="min-w-0 flex-1 truncate text-sm tabular-nums text-ink-soft">
-            <BlockReading startedAt={startedAt} blockBefore={blockBefore} inBlock={inBlock} />
+            <TimerReading startedAt={startedAt} todayTotal={todayTotal} />
           </p>
 
           {/* Taking back a stop is the one mistake no amount of editing entries can undo, because
@@ -511,20 +514,3 @@ function GoalLine({
   )
 }
 
-/** The sheet's own live timer reading, on its own tick for the same reason the card's is. */
-function BlockReading({
-  startedAt,
-  blockBefore,
-  inBlock,
-}: {
-  startedAt?: number
-  blockBefore: number
-  inBlock: boolean
-}) {
-  const now = useNow(1000)
-  if (startedAt !== undefined) {
-    return `${formatElapsed(blockBefore + (now - startedAt))} since ${formatTime(startedAt)}`
-  }
-  if (inBlock) return `${formatDuration(blockBefore)} so far, paused`
-  return 'Not running'
-}

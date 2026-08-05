@@ -309,12 +309,8 @@ export default function Activities() {
       <DurationCard
         {...shared}
         startedAt={startedAt}
-        blockBefore={blockBefore(entries, activity.id, blockStart, startedAt, now)}
-        inBlock={blockStart !== undefined}
         todayTotal={dayTotals.perActivity.get(activity.id) ?? 0}
-        thisWeek={stats.thisWeek}
-        streak={stats.streak}
-        total={stats.total}
+        inBlock={blockStart !== undefined}
         onStart={() => void startOrResume(activity.id)}
         onPause={() => void pause(activity.id)}
         onStop={() => void stop(activity.id)}
@@ -469,7 +465,7 @@ export default function Activities() {
                 total={stats.total}
                 trackedTime={stats.trackedTime}
                 startedAt={startedAt}
-                blockBefore={blockBefore(entries, openActivity.id, blockStart, startedAt, now)}
+                todayTotal={dayTotals.perActivity.get(openActivity.id) ?? 0}
                 inBlock={blockStart !== undefined}
                 entries={recentEntries(entries, openActivity.id)}
                 // Every activity can hold time now, so an entry can be moved onto any of them.
@@ -547,23 +543,6 @@ function recentEntries(entries: Entry[], activityId: string): Entry[] {
   const own = entries.filter((entry) => entry.activityId === activityId)
   // `getEntriesInRange` sorts oldest first, so the newest are at the end.
   return own.slice(-SHEET_ENTRIES).reverse()
-}
-
-/**
- * Tracked time in the current block, *excluding* the stretch running right now.
- *
- * The card adds the running stretch itself so it can tick once a second without the screen
- * re-rendering, so what it wants here is the block up to the moment that stretch began.
- */
-function blockBefore(
-  entries: Entry[],
-  activityId: string,
-  blockStart: number | undefined,
-  startedAt: number | undefined,
-  now: number,
-): number {
-  if (blockStart === undefined) return 0
-  return totalSince(entries, activityId, blockStart, startedAt ?? now)
 }
 
 type ActivityStats = {
