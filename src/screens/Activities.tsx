@@ -338,9 +338,9 @@ export default function Activities() {
 
   return (
     <section className="screen-pad mx-auto w-full max-w-3xl lg:max-w-5xl xl:max-w-6xl">
-      {/* Wraps on a narrow phone: three toolbar buttons beside the title overflow 375px, which is
-          what scrolled the whole page sideways. `ml-auto` keeps the group right-aligned whether it
-          sits on the title's row or drops below it. */}
+      {/* On a phone the three toolbar buttons are icon-only, so they fit one row beside the title;
+          from `sm` up each label appears. The label is `sr-only` rather than removed, so an
+          icon-only button still carries its name. `flex-wrap` stays as a backstop. */}
       <header className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-semibold text-ink">Activities</h1>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
@@ -357,7 +357,7 @@ export default function Activities() {
               }}
             >
               <Rows3 className="size-4" aria-hidden />
-              {compact ? 'Expand' : 'Compact'}
+              <span className="sr-only sm:not-sr-only">{compact ? 'Expand' : 'Compact'}</span>
             </Button>
           )}
           {/* Nothing to reorder with one card, and the toggle would only be a dead control. */}
@@ -368,14 +368,14 @@ export default function Activities() {
               onClick={() => setEditing((on) => !on)}
             >
               <ArrowUpDown className="size-4" aria-hidden />
-              {editing ? 'Done' : 'Reorder'}
+              <span className="sr-only sm:not-sr-only">{editing ? 'Done' : 'Reorder'}</span>
             </Button>
           )}
           {/* Adding an activity happens once a month; logging one happens all day. This is
               deliberately not the loudest thing on the screen. */}
           <Button onClick={() => setDraft({ draft: blankDraft(nextColor(activities.length)) })}>
             <Plus className="size-4" aria-hidden />
-            Add activity
+            <span className="sr-only sm:not-sr-only">Add activity</span>
           </Button>
         </div>
       </header>
