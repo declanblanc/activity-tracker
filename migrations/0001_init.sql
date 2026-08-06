@@ -6,5 +6,5 @@
 CREATE TABLE blob (
   id        INTEGER PRIMARY KEY CHECK (id = 1),  -- one row, enforced by the schema
   json      TEXT    NOT NULL,
-  updatedAt INTEGER NOT NULL                     -- server clock; drives the "last synced" display
+  updatedAt INTEGER NOT NULL                     -- server clock; doubles as the blob's version
 );
