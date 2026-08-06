@@ -49,8 +49,27 @@ type Prefs = {
    * the one value that must never travel inside the synced blob.
    */
   syncToken: string
-  /** Epoch ms of the last successful sync, on the server's clock; 0 = never. Display only. */
+  /** Epoch ms of the last successful sync, on this device's clock; 0 = never. Display only. */
   lastSyncAt: number
+  /**
+   * The version — the server's `updatedAt` — of the blob this device has merged; 0 = none yet.
+   *
+   * Sync sends it back as the condition on both halves of the exchange: `If-None-Match` on the
+   * download, so a poll that finds nothing new costs one small response instead of the whole
+   * database, and `If-Match` on the upload, so a write that another device beat to it is refused
+   * rather than silently overwriting that device's records.
+   *
+   * Device-local like everything else here, and it has to be: it describes what *this* device has
+   * seen. Losing it costs one full download.
+   */
+  mergedServerVersion: number
+  /**
+   * The newest local `updatedAt` the server is known to hold; 0 = nothing uploaded yet.
+   *
+   * The whole upload decision: a local edit pushes the newest `updatedAt` past this, and nothing
+   * else does. Losing it costs one full upload.
+   */
+  uploadedLocalChange: number
 }
 
 const DEFAULTS: Prefs = {
@@ -61,6 +80,8 @@ const DEFAULTS: Prefs = {
   resumableBlockStartedAt: {},
   syncToken: '',
   lastSyncAt: 0,
+  mergedServerVersion: 0,
+  uploadedLocalChange: 0,
 }
 
 const storageKey = (key: keyof Prefs) => `activity-tracker.${key}`

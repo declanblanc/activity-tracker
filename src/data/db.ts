@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie'
+import { setPref } from './prefs.ts'
 import type { Activity, Completion, Entry } from './types.ts'
 
 /**
@@ -33,6 +34,22 @@ export class ActivityTrackerDB extends Dexie {
 export const db = new ActivityTrackerDB()
 
 /**
+ * The newest `updatedAt` anywhere in the database, or 0 when it is empty.
+ *
+ * One number standing in for "is there anything here the server has not been told about", which is
+ * what lets sync answer that without exporting the whole database to find out. `updatedAt` is
+ * indexed on all three tables, so this is three cursors landing on one row each.
+ */
+export async function latestLocalChange(): Promise<number> {
+  const newest = await Promise.all([
+    db.activities.orderBy('updatedAt').last(),
+    db.entries.orderBy('updatedAt').last(),
+    db.completions.orderBy('updatedAt').last(),
+  ])
+  return Math.max(0, ...newest.map((record) => record?.updatedAt ?? 0))
+}
+
+/**
  * Erase every domain record on this device.
  *
  * ponytail: an intentional hard delete — the one place in `data/` that does not soft-delete.
@@ -42,6 +59,12 @@ export const db = new ActivityTrackerDB()
  * prefs — the sync token included — are left untouched.
  */
 export async function deleteAllData(): Promise<void> {
+  // Forget which server blob this device has merged, so the next sync downloads it whole instead
+  // of reading its own emptiness as agreement with the server. That is what keeps the promise the
+  // Settings copy makes — the data comes back while the token is still there — now that a sync
+  // with nothing to say is a conditional request that transfers nothing.
+  setPref('mergedServerVersion', 0)
+
   await db.transaction('rw', db.activities, db.entries, db.completions, async () => {
     await db.activities.clear()
     await db.entries.clear()

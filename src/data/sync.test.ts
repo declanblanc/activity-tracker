@@ -71,20 +71,49 @@ async function remoteBlob(seed: () => Promise<unknown>): Promise<string> {
   return json
 }
 
-type FakeServer = { json: string | null; updatedAt: number }
+type FakeServer = { json: string | null; updatedAt: number; downloads: number; uploads: number }
 
-/** The contract `worker/index.ts` implements: GET returns the blob, PUT replaces it. */
-function stubServer(initial: string | null = null): FakeServer {
-  const server: FakeServer = { json: initial, updatedAt: initial === null ? 0 : T0 }
+/**
+ * The contract `worker/index.ts` implements: `GET` returns the blob unless `If-None-Match` already
+ * names its version, and `PUT` replaces it only while `If-Match` still does.
+ *
+ * The counters are how a test asserts that an idle sync moved nothing — the whole point of the
+ * conditional headers — rather than only that it did no harm. `onUpload` runs just before a write
+ * is evaluated, which is where a test puts another device's write to open the race `If-Match` exists
+ * to close.
+ */
+function stubServer(initial: string | null = null, onUpload?: (server: FakeServer) => void): FakeServer {
+  const server: FakeServer = {
+    json: initial,
+    updatedAt: initial === null ? 0 : T0,
+    downloads: 0,
+    uploads: 0,
+  }
+  const version = () => `"${server.updatedAt}"`
+  let writes = 0
 
   vi.stubGlobal(
     'fetch',
     vi.fn((_input: string, init: RequestInit) => {
+      const headers = init.headers as Record<string, string>
+
       if (init.method === 'GET') {
+        if (headers['If-None-Match'] === version()) {
+          return Promise.resolve(new Response(null, { status: 304 }))
+        }
+        server.downloads += 1
         return Promise.resolve(jsonResponse({ json: server.json, updatedAt: server.updatedAt }))
       }
+
+      onUpload?.(server)
+      if (headers['If-Match'] !== version()) {
+        return Promise.resolve(new Response('stale', { status: 412 }))
+      }
+      server.uploads += 1
       server.json = init.body as string
-      server.updatedAt = T0 + HOUR
+      // A distinct version per write, so a stale caller is one the fake can actually recognise.
+      writes += 1
+      server.updatedAt = T0 + HOUR * writes
       return Promise.resolve(jsonResponse({ updatedAt: server.updatedAt }))
     }),
   )
@@ -134,12 +163,12 @@ describe('syncNow', () => {
   it('uploads the local database on a first-ever sync', async () => {
     await db.activities.add(activity())
     await db.entries.add(entry())
-    stubServer(null)
+    const server = stubServer(null)
 
     const { syncedAt } = await syncNow()
 
-    expect(syncedAt).toBe(T0 + HOUR)
-    expect(getPref('lastSyncAt')).toBe(T0 + HOUR)
+    expect(server.json).toContain('activity-1')
+    expect(getPref('lastSyncAt')).toBe(syncedAt)
   })
 
   it('pulls a remote record into an empty database', async () => {
@@ -208,6 +237,62 @@ describe('syncNow', () => {
 
     expect((await db.entries.get('local-open'))?.endedAt).toBe(T0 + HOUR)
     expect((await db.entries.get('remote-open'))?.endedAt).toBe(OPEN_ENTRY_END)
+  })
+
+  // The whole reason syncing every few seconds is affordable: once both sides agree, a sync
+  // transfers no database in either direction. Without this the poll would download and re-upload
+  // the entire account every few seconds.
+  it('moves nothing once both sides agree', async () => {
+    await db.activities.add(activity())
+    const server = stubServer(null)
+
+    await syncNow()
+    expect(server.uploads).toBe(1)
+
+    await syncNow()
+    await syncNow()
+
+    expect(server.downloads).toBe(0)
+    expect(server.uploads).toBe(1)
+  })
+
+  it('uploads a local edit made after the last sync', async () => {
+    await db.activities.add(activity({ name: 'Before' }))
+    const server = stubServer(null)
+    await syncNow()
+
+    await db.activities.put(activity({ name: 'After', updatedAt: T0 + HOUR }))
+    await syncNow()
+
+    expect(server.json).toContain('After')
+    expect(server.uploads).toBe(2)
+  })
+
+  // The race the old unconditional upload lost silently: both devices merge the same blob, and the
+  // second one to write used to drop whatever the first had just added. `If-Match` refuses that
+  // write, and the retry merges the winner in first.
+  it('merges again rather than overwriting a blob another device wrote first', async () => {
+    const theirs = await remoteBlob(() =>
+      db.entries.add(entry({ id: 'theirs', updatedAt: T0 + HOUR })),
+    )
+    await db.entries.add(entry({ id: 'mine', updatedAt: T0 + HOUR }))
+
+    // The other device lands its write once, in the window between this device's download and its
+    // upload — so the first upload is refused and the retry is what has to get it right.
+    let raced = false
+    const server = stubServer(null, (state) => {
+      if (raced) return
+      raced = true
+      state.json = theirs
+      state.updatedAt = T0 + 2 * HOUR
+    })
+
+    await syncNow()
+
+    // Neither entry was lost: the refused upload was rebuilt on top of theirs.
+    expect(server.json).toContain('theirs')
+    expect(server.json).toContain('mine')
+    expect(await db.entries.count()).toBe(2)
   })
 
   it('leaves the database and the watermark untouched when the token is refused', async () => {
