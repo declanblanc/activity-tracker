@@ -28,6 +28,11 @@ Four scripts, all expected to stay green: `typecheck`, `lint`, `test`, `build`.
 `npm run preview` builds and serves for real, which is the only way to exercise the service
 worker and the update prompt.
 
+`npm run dev:worker` builds and serves the app *behind the Worker*, with a local D1 and the sync
+token `dev-token` — the only way to exercise sync, because `npm run dev` has no `/api/data`. Two
+browser origins (`localhost:8787` and `127.0.0.1:8787`) get separate databases, which is how to
+watch one "device" pick up the other's change.
+
 ## How it is built
 
 Vite + React + TypeScript + Tailwind v4, Dexie over IndexedDB, date-fns for calendars, Recharts

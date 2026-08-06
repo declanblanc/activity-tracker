@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:worker": "npm run build && wrangler d1 migrations apply activity-tracker --local && wrangler dev --port 8787 --var SYNC_TOKEN:dev-token",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "lint": "oxlint",
