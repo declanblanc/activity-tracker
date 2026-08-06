@@ -1,4 +1,4 @@
-import Dexie, { type Table } from 'dexie'
+import Dexie, { liveQuery, type Table } from 'dexie'
 import { setPref } from './prefs.ts'
 import type { Activity, Completion, Entry } from './types.ts'
 
@@ -47,6 +47,20 @@ export async function latestLocalChange(): Promise<number> {
     db.completions.orderBy('updatedAt').last(),
   ])
   return Math.max(0, ...newest.map((record) => record?.updatedAt ?? 0))
+}
+
+/**
+ * Call `changed` whenever a record is written, and once immediately.
+ *
+ * Sync's other half: an interval catches what the *other* device did, and this catches what this
+ * one did, so a check-off leaves for the server as soon as it is made instead of waiting out the
+ * poll. Built on `liveQuery` — the same mechanism every screen already observes through — so no
+ * mutation has to remember to announce itself, which is the property the interval was chosen for
+ * in the first place.
+ */
+export function onLocalChange(changed: () => void): () => void {
+  const subscription = liveQuery(latestLocalChange).subscribe(changed)
+  return () => subscription.unsubscribe()
 }
 
 /**

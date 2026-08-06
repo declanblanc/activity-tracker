@@ -1,9 +1,17 @@
 /**
- * Runs sync in the background: on mount, whenever the app becomes visible, and once a minute
- * while it stays visible.
+ * Runs sync in the background: on mount, whenever the app becomes visible, a few seconds after any
+ * local change, and on a short interval while the app stays visible.
  *
- * An interval rather than a hook on every mutation, so no call site has to remember to trigger
- * one — and becoming visible is the moment that matters most, which is picking the phone back up.
+ * The interval and the change signal are the two directions. The interval is how this device hears
+ * what the *other* one did, so it sets how long a change takes to appear here — seconds, not the
+ * minute it used to be, which is affordable because `sync.ts` answers an unchanged server with one
+ * small conditional request. The change signal is how what happens *here* leaves at once instead of
+ * waiting out the interval; between the two, a stopped timer shows up on the other device in about
+ * one interval rather than two.
+ *
+ * Still an interval and a database signal rather than a hook on every mutation, so no call site has
+ * to remember to trigger one — and becoming visible is still the moment that matters most, which is
+ * picking the phone back up.
  *
  * Failures are silent by design. This is an offline-first app, a failed sync is the normal state
  * on a train, and there is nothing for the owner to do about it. Settings shows the last success,
@@ -13,20 +21,36 @@
  * sync.
  */
 import { useEffect } from 'react'
+import { onLocalChange } from '../data/db.ts'
 import { getPref } from '../data/prefs.ts'
 import { syncNow } from '../data/sync.ts'
 
-const INTERVAL_MS = 60_000
+/** How long a change made on another device can go unnoticed here. */
+const INTERVAL_MS = 5_000
+
+/**
+ * How long to let local writes settle before uploading them.
+ *
+ * One action is several writes — stopping a timer closes an entry and a merge can correct another —
+ * and each would otherwise be its own upload of the whole database.
+ */
+const SETTLE_MS = 300
 
 export default function SyncAgent() {
   useEffect(() => {
-    // One at a time. A slow round trip must not have the interval stack a second sync on top of
-    // it, because both would upload a merge computed from the same starting point and the later
-    // upload would drop whatever the earlier one had just added.
+    // One at a time. Two overlapping passes merge from the same blob version, so the second's
+    // upload is refused as stale and its work is thrown away. A change that lands mid-pass sets
+    // `again` rather than being dropped, because the running pass may already have read the
+    // database by then.
     let running = false
+    let again = false
 
-    async function sync() {
-      if (running || document.hidden || !getPref('syncToken')) return
+    async function sync(): Promise<void> {
+      if (document.hidden || !getPref('syncToken')) return
+      if (running) {
+        again = true
+        return
+      }
 
       running = true
       try {
@@ -36,6 +60,17 @@ export default function SyncAgent() {
       } finally {
         running = false
       }
+
+      if (again) {
+        again = false
+        await sync()
+      }
+    }
+
+    let settling: ReturnType<typeof setTimeout> | undefined
+    const syncWhenSettled = () => {
+      clearTimeout(settling)
+      settling = setTimeout(() => void sync(), SETTLE_MS)
     }
 
     const onVisibilityChange = () => void sync()
@@ -43,10 +78,13 @@ export default function SyncAgent() {
     void sync()
     const interval = setInterval(() => void sync(), INTERVAL_MS)
     document.addEventListener('visibilitychange', onVisibilityChange)
+    const stopWatchingDatabase = onLocalChange(syncWhenSettled)
 
     return () => {
       clearInterval(interval)
+      clearTimeout(settling)
       document.removeEventListener('visibilitychange', onVisibilityChange)
+      stopWatchingDatabase()
     }
   }, [])
 
