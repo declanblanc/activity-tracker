@@ -83,6 +83,24 @@ These are the ones that look wrong until you know why. All are settled decisions
   and uploads the merged export. There is no watermark and no server-side schema, so a new field
   on a type needs no migration. `syncToken` is device-local on purpose: it is the one value that
   must never travel inside the blob.
+- **Both halves of a sync are conditional on the blob's version, and neither is optional.** The
+  version is the blob's server `updatedAt`; each device remembers the one it merged in
+  `mergedServerVersion`. The download sends it as `If-None-Match`, so a poll that finds nothing new
+  answers `304` and moves no database at all — which is the only reason polling every few seconds is
+  affordable. The upload sends it as `If-Match`, so a merge built on a blob another device has since
+  replaced is refused and rebuilt instead of overwriting it. The second is *load-bearing because of*
+  the first: the upload used to be unconditional, and that re-upload-every-time was what healed the
+  lost-update race by accident. The compare-and-swap heals it on purpose, which is what allows the
+  upload to be skipped when nothing local is new. A device that has just merged another's change
+  reads it as newer than anything it has sent and echoes the blob back once — intended, since that
+  echo is what carries records the sender lacked, and it does not repeat.
+- **The second trigger is the database itself.** `onLocalChange` in `db.ts` is a `liveQuery` over the
+  newest `updatedAt` in all three tables, so an edit made here uploads at once rather than waiting
+  out the poll; `latestLocalChange` is also the whole upload decision. Between the two, no mutation
+  has to remember to announce itself — the property the interval was originally chosen for.
+- **`deleteAllData` forgets `mergedServerVersion`.** Otherwise the next sync reads this device's own
+  emptiness as agreement with the server, `304`s, and the data does not come back — which is what
+  the Settings copy promises while the token is still there.
 - **An activity's `measure` — its scored axis — *can* change.** It once could not, because records
   were thought to be shaped by it; they are not (every activity may hold both check-offs and
   intervals), so the measure is only a scoring choice. The one consequence is the goal: a days

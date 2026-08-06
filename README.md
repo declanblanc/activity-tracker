@@ -13,8 +13,9 @@ installable PWA that reads and writes a local database, so every screen works wi
 
 There is a server, but only as a courier. Optional cloud sync keeps a copy of the database on a
 Cloudflare Worker so it survives a cleared cache and reaches a second device; paste one shared
-token into Settings on each device to turn it on. The local database stays the source every screen
-reads. See [DEPLOY.md](DEPLOY.md).
+token into Settings on each device to turn it on. Two devices left open stay in step within a few
+seconds of each other, without either being refreshed. The local database stays the source every
+screen reads. See [DEPLOY.md](DEPLOY.md).
 
 ## Running it
 
