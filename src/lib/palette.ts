@@ -8,6 +8,14 @@
  *
  * Every swatch carries a name because that name is its accessible label. A picker that
  * announces "#6ee7b7" to a screen reader has not been labelled at all.
+ *
+ * Two laps of the hue wheel, and the order is load-bearing: the first eight are spread as far
+ * apart as eight calm colours can be, the second lap fills the gaps between them. `nextColor`
+ * walks the list, so the first eight activities get the widest spacing available.
+ *
+ * The gaps the second lap leaves alone are the ones with no room left: a red beside Rose and a
+ * yellow beside Sand are the same swatch twice at this lightness, and a swatch nobody can tell
+ * apart from its neighbour is not another option.
  */
 export const PALETTE = [
   { hex: '#6ee7b7', name: 'Mint' },
@@ -18,6 +26,12 @@ export const PALETTE = [
   { hex: '#fdba74', name: 'Peach' },
   { hex: '#fcd34d', name: 'Sand' },
   { hex: '#bef264', name: 'Sage' },
+  { hex: '#86efac', name: 'Fern' },
+  { hex: '#5eead4', name: 'Teal' },
+  { hex: '#93c5fd', name: 'Cornflower' },
+  { hex: '#a5b4fc', name: 'Periwinkle' },
+  { hex: '#d8b4fe', name: 'Violet' },
+  { hex: '#f9a8d4', name: 'Pink' },
 ] as const
 
 /**
