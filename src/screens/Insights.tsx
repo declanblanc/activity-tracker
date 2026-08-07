@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { Link, useSearchParams } from 'react-router'
+import { useSearchParams } from 'react-router'
 import EntryForm from '../components/EntryForm.tsx'
 import { blankDraft, type Draft } from '../components/entryDraft.ts'
 import { IconButton } from '../components/ui/Button.tsx'
@@ -75,7 +75,7 @@ export default function Insights() {
   // A stretch of this activity being written down by hand. Only ever opened from the
   // focused view, so it starts out pointed at the activity on screen.
   const [draft, setDraft] = useState<Draft | null>(null)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   // Archived activities included: their past time still happened, and the period it
   // falls in still has to account for it.
   const activities = useLiveQuery(() => getActivities(true), [])
@@ -155,35 +155,47 @@ export default function Insights() {
         <h1 className="min-w-0 flex-1 truncate text-xl font-semibold text-ink">
           {focus ? focus.name : 'Insights'}
         </h1>
-        {focus && (
-          <>
-            {/* Retroactive logging lives here because this is the screen where a gap is seen —
-                a goal short by an hour is the hour you forgot to start.
+        {/* Retroactive logging lives here because this is the screen where a gap is seen —
+            a goal short by an hour is the hour you forgot to start.
 
-                Only for activities that track time — a plain check-off has no interval to write,
-                and its equivalent gesture is ticking a past square on the year grid below.
+            Only for activities that track time — a plain check-off has no interval to write,
+            and its equivalent gesture is ticking a past square on the year grid below.
 
-                Icon-only: this header already carries a name and a way out of it, and the word
-                "Add" cost enough width to truncate the activity's name to six characters on a
-                phone. */}
-            {tracksTime(focus) && (
-              <IconButton
-                label="Add an entry"
-                variant="primary"
-                onClick={() => setDraft({ ...blankDraft(now), activityId: focus.id })}
-              >
-                <Plus className="size-4" aria-hidden />
-              </IconButton>
-            )}
-            <Link
-              to="/insights"
-              onClick={() => setDraft(null)}
-              className="focus-ring inline-flex min-h-11 shrink-0 items-center rounded-lg bg-raised px-4 text-sm font-medium text-ink transition-colors hover:bg-raised-hover"
-            >
-              All activities
-            </Link>
-          </>
+            Icon-only: this header already carries a name and a way out of it, and the word
+            "Add" cost enough width to truncate the activity's name to six characters on a
+            phone. */}
+        {focus && tracksTime(focus) && (
+          <IconButton
+            label="Add an entry"
+            variant="primary"
+            onClick={() => setDraft({ ...blankDraft(now), activityId: focus.id })}
+          >
+            <Plus className="size-4" aria-hidden />
+          </IconButton>
         )}
+        {/* The focus, both ways round. `?activity=` is still what the screen reads, so a link
+            from a Tracker card and a pick here land in the same place — this only writes the
+            same param the link does, including back to none. */}
+        <select
+          aria-label="Filter by activity"
+          value={focus?.id ?? ''}
+          onChange={(event) => {
+            // The draft is pointed at the activity being left.
+            setDraft(null)
+            const chosen = event.target.value
+            setSearchParams(chosen ? { activity: chosen } : {})
+          }}
+          className="focus-ring min-h-11 w-32 shrink-0 rounded-lg bg-raised px-3 text-sm font-medium text-ink"
+        >
+          <option value="">All activities</option>
+          {activities.map((activity) => (
+            // Archived activities are offered: their past time is still in these numbers.
+            <option key={activity.id} value={activity.id}>
+              {activity.name}
+              {activity.archived ? ' (archived)' : ''}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* One row, not two. The scale tabs and the period stepper used to stack into about
