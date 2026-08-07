@@ -19,6 +19,7 @@ import { blankDraft, draftFrom, type Draft } from './entryDraft.ts'
 import { HeatGrid } from './HeatGrid.tsx'
 import { TimerReading } from './TimerReading.tsx'
 import Button, { IconButton } from './ui/Button.tsx'
+import Meter from './ui/Meter.tsx'
 import Stat from './ui/Stat.tsx'
 
 /** A full year of columns. The strip scrolls, so a narrow drawer still shows all of it. */
@@ -506,11 +507,18 @@ function GoalLine({
   const per = activity.targetPeriod === 'day' ? 'a day' : `a ${activity.targetPeriod}`
 
   return (
-    <p className="mt-4 text-sm text-ink-muted">
-      Goal: {goal} {per}
-      {weeklyTarget !== null && ` — ${so_far} so far this week`}
-      {activity.targetPeriod === 'month' && ` — ${so_far} so far this month`}.
-    </p>
+    <div className="mt-4">
+      <p className="text-sm text-ink-muted">
+        Goal: {goal} {per}
+        {weeklyTarget !== null && ` — ${so_far} so far this week`}
+        {activity.targetPeriod === 'month' && ` — ${so_far} so far this month`}.
+      </p>
+      {/* Only a timed goal gets a bar: a check-off's progress is already the grid, square by
+          square, and a second reading of the same days would just be noise. */}
+      {activity.measure === 'duration' && (
+        <Meter fraction={thisPeriod / target} color={activity.color} />
+      )}
+    </div>
   )
 }
 
