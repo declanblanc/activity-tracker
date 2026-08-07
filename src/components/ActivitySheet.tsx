@@ -144,7 +144,7 @@ export default function ActivitySheet({
         </IconButton>
       </div>
 
-      <GoalLine activity={activity} thisPeriod={thisPeriod} weeklyTarget={weeklyTarget} />
+      <GoalLine activity={activity} thisPeriod={thisPeriod} />
 
       {/* Running controls live here for every activity — the sheet is where any activity's time
           is logged, whatever its card shows — so a timer can be started without closing it. */}
@@ -485,15 +485,7 @@ const rowDate = (at: number) =>
   new Date(at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })
 
 /** What the activity is aiming for, and how far into the current period it is. */
-function GoalLine({
-  activity,
-  thisPeriod,
-  weeklyTarget,
-}: {
-  activity: Activity
-  thisPeriod: number
-  weeklyTarget: number | null
-}) {
+function GoalLine({ activity, thisPeriod }: { activity: Activity; thisPeriod: number }) {
   const target = activity.targetAmount
   if (!target || !activity.targetPeriod) return null
 
@@ -505,13 +497,16 @@ function GoalLine({
   const goal = formatAmount(activity.measure, target)
   const so_far = formatAmount(activity.measure, thisPeriod)
   const per = activity.targetPeriod === 'day' ? 'a day' : `a ${activity.targetPeriod}`
+  const left = target - thisPeriod
 
   return (
     <div className="mt-4">
       <p className="text-sm text-ink-muted">
         Goal: {goal} {per}
-        {weeklyTarget !== null && ` — ${so_far} so far this week`}
-        {activity.targetPeriod === 'month' && ` — ${so_far} so far this month`}.
+        {/* The day scale has no "so far": a daily goal's progress is the timer reading right
+            below it, which says the same thing. */}
+        {activity.targetPeriod !== 'day' && ` — ${so_far} so far this ${activity.targetPeriod}`}.
+        {left > 0 && ` ${formatAmount(activity.measure, left)} to go!`}
       </p>
       {/* Only a timed goal gets a bar: a check-off's progress is already the grid, square by
           square, and a second reading of the same days would just be noise. */}
