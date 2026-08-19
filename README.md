@@ -71,8 +71,10 @@ that is merely on or off would make twenty minutes and six hours look identical.
 - **Today** — one day as a vertical timeline, overlapping timers packed into lanes, drawn to fit the
   screen so the shape of the day needs no scrolling. Tap a bar to correct it; tap empty space before
   now to write down a stretch that started there.
-- **Insights** — day/week/month coverage, a trend chart, and the goals panel that scores both
-  measures.
+- **Insights** — four questions in order of usefulness: what is worth knowing (a handful of
+  ranked sentences), how the goals stand, whether this period is normal for you, and what shape
+  the history has — a trend, the weekday rhythm, what got done and where the time went. Coverage
+  sits last and collapsed. Picking one activity focuses the screen on it and adds its record book.
 - **Settings** — export, import, update check.
 
 There is no separate log screen: a timed activity's stretches are listed in its own sheet, newest
@@ -89,7 +91,7 @@ rather than overwrites: last write wins per record, so re-importing a stale back
 back a day you logged after it was taken. There is also a CSV export for a spreadsheet, which
 cannot be imported back, and says so.
 
-## Five details that look like details but are not
+## Six details that look like details but are not
 
 **Days are named by local calendar parts, never `toISOString()`.** Logging something at 6pm
 Tuesday in California would otherwise fill in Wednesday's square.
@@ -110,6 +112,13 @@ indistinguishable from "I never touched it", so a stale import would bring it ba
 intervals, so overlapping timers each count in full. Tracked wall-clock is the *union* across
 every activity, counting shared time once. The second is what makes "untracked" mean anything;
 reconciling them would break both.
+
+**A period still running is never compared against a finished one.** Every comparison on Insights
+goes through [src/lib/pace.ts](src/lib/pace.ts), which pairs the same count of *closed days* on
+each side — so Tuesday's two days are read against last week's first two, not against last week
+entire. Where nothing has closed there is no comparison rather than a wrong one, which is why the
+day scale shows a goal instead of a delta. Without it, a perfectly normal Tuesday reported itself
+as "48h 37m down".
 
 ## Streaks
 

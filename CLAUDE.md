@@ -17,7 +17,9 @@ These are the ones that look wrong until you know why. All are settled decisions
   decide *which components to render*, which is how the grid stays check-off-only; what it may not
   do is compute two different numbers. The other exceptions are `formatAmount` (the last step
   before rendering, which has to put a unit on a bare number) and `FocusSummary` (the two measures
-  genuinely have different things to say).
+  genuinely have different things to say). `digest.ts`, `correlate.ts` and `rhythm.ts` take a
+  `measure` but never branch on it — they hand it straight to `formatAmount` so a sentence can
+  carry a unit, which is that same last step and not a second code path.
 - **Every activity holds both axes; the sheet always shows both; `display` is the card's alone.**
   Storage never cared — completions and entries were always both allowed on any activity. So the
   activity sheet renders both the check-off grid and the timer for *every* activity, unconditionally;
@@ -87,6 +89,26 @@ These are the ones that look wrong until you know why. All are settled decisions
   separate. Conflating them is the easy mistake.
 - **The accounting window clamps to `now`.** Otherwise a fully-tracked morning reports 15h
   untracked at 09:00.
+- **A part period is never measured against a whole one; `lib/pace.ts` is the only comparison.**
+  Every delta on Insights used to read `current` against the closed period before it, so the first
+  six days of every week reported a collapse — "48h 37m down" on a Tuesday morning, four times over
+  in the breakdown alone — and the trend's mean line included the stub it was the baseline for.
+  `pace` pairs the same count of **closed days** on each side. A day is the finest amount
+  `dayAmounts` names, so a day still running is on neither side; on the day scale nothing has
+  closed and `comparison` is `null`, which callers render as *no delta at all* rather than a wrong
+  one. `leadingTotals` is the same rule for a rank: it cuts every past period to the same first N
+  days before placing this one among them. `onPace` asks for the closed days' worth and not the
+  day in progress, so "behind" means the period has already slipped rather than that it is early
+  in the morning.
+- **A panel that has nothing to say renders nothing, and that silence is load-bearing.**
+  `Highlights`, `WorthALook`, `Standing`'s rank row and `describeRhythm` all return null rather
+  than manufacture a finding, and the thresholds that make them do so are deliberate: a mover
+  needs a 30% swing at the week or month scale (a single day against a ten-day average is a coin
+  toss), a correlation needs five overlapping days and |r| ≥ 0.15, a rhythm needs every weekday
+  seen three times. A digest that always says four things is the furniture this screen was.
+  Two related traps, both hit and both fixed: a mover's baseline starts at the activity's **first
+  record**, since periods before it existed are not quiet periods, and `WhatGotDone` hides at the
+  day scale, where every row is 1 of 1 and a full bar means "goal met" everywhere else in the app.
 - **Targets are scored only at their own period.** A 10h/week target shows no goal on the day or
   month scale. No pro-rating.
 - **A streak skips an in-progress period, unless it has already met its target** — then it counts
