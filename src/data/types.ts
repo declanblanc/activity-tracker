@@ -156,6 +156,11 @@ export type EntryInput = {
  * Without it, a stale row arriving from an import could resurrect a day the owner
  * deliberately cleared.
  *
+ * What it cannot do is take back a day the timer ran on: tracked time checks a day off
+ * outright, so a `done: false` row on such a day is inert (see `completionAmounts`). The
+ * un-log gesture is the whole of this table's job on an *untracked* day, and the dashboard
+ * says as much when a tracked square is tapped.
+ *
  * `done` is a boolean and so may never be indexed: booleans are not valid IndexedDB keys,
  * exactly the trap `null` is. It is filtered in memory.
  *

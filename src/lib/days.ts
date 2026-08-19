@@ -36,43 +36,79 @@ export function dayAmounts(
   now: number,
 ): Map<DateKey, number> {
   if (activity.measure === 'count') {
-    return completionAmounts(activity.id, completions)
+    return completionAmounts(activity.id, entries, completions, days, now)
   }
 
-  const own = entries.filter((entry) => entry.activityId === activity.id)
-  // Bucketed by `bucketTotals` rather than by splitting intervals here: it already clips an
-  // entry that spans midnight, ends an open entry at `now`, and refuses to count the future.
-  // All three are tested, and none of them wants a second implementation.
+  return trackedByDay(activity.id, entries, days, now)
+}
+
+/**
+ * day → milliseconds tracked within that local day, for one activity. A missing key is zero.
+ *
+ * Bucketed by `bucketTotals` rather than by splitting intervals here: it already clips an entry
+ * that spans midnight, ends an open entry at `now`, and refuses to count the future. All three
+ * are tested, and none of them wants a second implementation.
+ */
+export function trackedByDay(
+  activityId: string,
+  entries: Entry[],
+  days: TimeWindow[],
+  now: number,
+): Map<DateKey, number> {
+  const own = entries.filter((entry) => entry.activityId === activityId)
   return new Map(
     bucketTotals(own, days, now).map((bucket) => [
       // The window's *start*, read as local parts. `window.end` is the next day's midnight
       // and would name tomorrow; `toISOString()` would name tomorrow for every evening in a
       // western zone — the bug `dateKey` exists to prevent.
       dateKey(bucket.window.start),
-      bucket.perActivity.get(activity.id) ?? 0,
+      bucket.perActivity.get(activityId) ?? 0,
     ]),
   )
 }
 
 /**
- * day → 1 for every logged day of one activity's check-offs. A missing key is zero.
+ * day → 1 for every day of one activity that counts as checked off. A missing key is zero.
  *
  * The check-off half of `dayAmounts`, pulled out because an activity that leads with its timer
  * but also checks off needs the contribution grid on its own — it scores time through
- * `dayAmounts`, so its grid squares come from here instead. See `Activity.showCheckoff`.
+ * `dayAmounts`, so its grid squares come from here instead. See `Activity.display`.
+ *
+ * **Tracked time checks the day off, and nothing overrules it.** A day you ran the timer on is a
+ * day you did the thing, so it fills its square and feeds the streak without also asking for a
+ * tap. This is what makes the two axes one habit rather than two ledgers kept side by side, and
+ * it holds whichever order the two records arrived in: a `done: false` row on a tracked day is
+ * inert, exactly as it is on a day time is added to afterwards. The record that says the day
+ * happened is the interval, and the only way to take the day back is to remove it — which is
+ * what the dashboard tells the owner when they tap such a square.
+ *
+ * `done: false` is still this table's tombstone, and still the whole of the un-log gesture on an
+ * *untracked* day: a row that says a day was cleared on purpose, distinct from a day never
+ * touched. It is only tracked time it cannot outrank.
+ *
+ * Only `days` bounds the time side; completions are handed in whole. So a tracked day outside
+ * the range that was read is not credited here — the same bound `dayAmounts` documents, and the
+ * reason a screen derives its grid and its read from one range.
  */
 export function completionAmounts(
   activityId: string,
+  entries: Entry[],
   completions: Completion[],
+  days: TimeWindow[],
+  now: number,
 ): Map<DateKey, number> {
-  return new Map(
-    completions
-      // `done === true`, never truthiness. A `done: false` row is a decision that was recorded
-      // — an un-log — and reading it as absence is how a cleared day comes back to life. It
-      // contributes 0, which breaks a streak exactly as a missing row does.
-      .filter((row) => row.activityId === activityId && row.done)
-      .map((row) => [row.day, 1]),
-  )
+  const amounts = new Map<DateKey, number>()
+
+  // `row.done`, never truthiness: a `false` row is a decision, and it scores as a zero rather
+  // than as an absence.
+  for (const row of completions) {
+    if (row.activityId === activityId && row.done) amounts.set(row.day, 1)
+  }
+  for (const [day, tracked] of trackedByDay(activityId, entries, days, now)) {
+    if (tracked > 0) amounts.set(day, 1)
+  }
+
+  return amounts
 }
 
 /**

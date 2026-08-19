@@ -37,23 +37,16 @@ export async function getCompletionsInRange(
 }
 
 /**
- * Flip one day's check-off and return what it became.
+ * Set one day's check-off to `done`.
  *
- * Read and write share one transaction so two taps in flight cannot both see the same
- * starting value and land out of order. The derived primary key means there can only ever
- * be one row per activity-day whatever races — the transaction is about the *value* being
- * correct, not about uniqueness.
+ * There is deliberately no `toggle` counterpart reading the stored row first. A day the timer
+ * ran on reads as checked off with no row at all (see `completionAmounts`), so "the opposite of
+ * what is stored" and "the opposite of what the owner is looking at" stopped being the same
+ * answer — and only the second one is the gesture. Every caller has the day's drawn state to
+ * hand, so it passes what it wants rather than asking storage to work it out.
+ *
+ * The derived primary key means there can only ever be one row per activity-day whatever races.
  */
-export async function toggleCompletion(activityId: string, day: DateKey): Promise<boolean> {
-  return db.transaction('rw', db.completions, async () => {
-    const existing = await db.completions.get(completionId(activityId, day))
-    const done = existing?.done !== true
-    await write(activityId, day, done)
-    return done
-  })
-}
-
-/** Set one day's check-off outright, for a caller that knows which state it wants. */
 export async function setCompletion(
   activityId: string,
   day: DateKey,

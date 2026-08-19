@@ -95,7 +95,11 @@ export default function ActivitySheet({
   todayTotal: number
   /** Whether a block is open at all — what the Stop button has to end. */
   inBlock: boolean
-  onDayActivate: (day: DateKey) => void
+  /**
+   * Fill the day in or clear it, returning the reason it could not be cleared — tracked time
+   * checks a day off outright, and that is the one thing a tap here cannot undo.
+   */
+  onDayActivate: (day: DateKey) => string | undefined
   onStart: () => void
   onPause: () => void
   onStop: () => void
@@ -111,6 +115,12 @@ export default function ActivitySheet({
   onDelete: () => void
   onClose: () => void
 }) {
+  // Why the last tap on a square changed nothing, shown under the grid. Held here rather than on
+  // the screen because it belongs to the sheet's lifetime: closing the sheet forgets it, like the
+  // half-typed entry correction beside it.
+  const [dayNote, setDayNote] = useState<string>()
+  const activateDay = (day: DateKey) => setDayNote(onDayActivate(day))
+
   const weeklyTarget = targetAt(activity, 'week')
   // A streak is counted in whichever period the activity is scored by; the total is always
   // days for a check-off and time for a timer.
@@ -205,7 +215,8 @@ export default function ActivitySheet({
             today={today}
             weeklyTarget={weeklyTarget ?? undefined}
             heading="Past year"
-            onDayActivate={onDayActivate}
+            note={dayNote}
+            onDayActivate={activateDay}
           />
           <EntryList
             activity={activity}
@@ -230,7 +241,8 @@ export default function ActivitySheet({
             amounts={amounts}
             today={today}
             heading="Checked off"
-            onDayActivate={onDayActivate}
+            note={dayNote}
+            onDayActivate={activateDay}
           />
         </>
       )}
@@ -295,6 +307,7 @@ function HistoryGrid({
   today,
   weeklyTarget,
   heading,
+  note,
   onDayActivate,
 }: {
   activity: Activity
@@ -302,6 +315,8 @@ function HistoryGrid({
   today: DateKey
   weeklyTarget?: number
   heading: string
+  /** Why the last tap changed nothing, in place of the hint that says taps do something. */
+  note?: string
   onDayActivate: (day: DateKey) => void
 }) {
   return (
@@ -315,7 +330,13 @@ function HistoryGrid({
         weeklyTarget={weeklyTarget}
         onDayActivate={activity.archived ? undefined : onDayActivate}
       />
-      <p className="mt-2 text-2xs text-ink-muted">Tap any past day to fill it in or clear it.</p>
+      {note ? (
+        <p role="status" className="mt-2 text-2xs text-ink-soft">
+          {note}
+        </p>
+      ) : (
+        <p className="mt-2 text-2xs text-ink-muted">Tap any past day to fill it in or clear it.</p>
+      )}
     </div>
   )
 }

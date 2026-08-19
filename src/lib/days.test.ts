@@ -49,6 +49,7 @@ function completion(day: string, done = true, activityId = 'a'): Completion {
 
 describe('dayAmounts for a count activity', () => {
   const counted = activity({ measure: 'count' })
+  const now = local('2026-08-03T23:00:00-07:00')
   const days = trailingWindows(local('2026-08-03T09:00:00-07:00'), 'day', 7)
 
   it('gives a logged day an amount of 1', () => {
@@ -74,11 +75,54 @@ describe('dayAmounts for a count activity', () => {
     expect(amounts.size).toBe(0)
   })
 
-  it('ignores entries, which a counted activity should never have', () => {
-    // Only a hand-edited import can put one there. The result is invisible, not wrong.
+  it('checks a day off because the timer ran on it', () => {
+    // The two axes are one habit: a day you tracked is a day you did the thing, and it fills
+    // its square and feeds the streak without also asking for a tap.
     const at = local('2026-08-03T10:00:00-07:00')
-    const amounts = dayAmounts(counted, [entry(at, at + HOUR)], [], days, Date.now())
+    const amounts = dayAmounts(counted, [entry(at, at + HOUR)], [], days, now)
+    expect(amounts.get('2026-08-03')).toBe(1)
+  })
+
+  it('counts a tracked day once, however many stretches it holds', () => {
+    const morning = local('2026-08-03T09:00:00-07:00')
+    const evening = local('2026-08-03T20:00:00-07:00')
+    const amounts = dayAmounts(
+      counted,
+      [entry(morning, morning + HOUR), entry(evening, evening + HOUR)],
+      [],
+      days,
+      now,
+    )
+    expect(amounts.get('2026-08-03')).toBe(1)
+  })
+
+  it('keeps a tracked day checked off, whatever the stored row says', () => {
+    // The interval is the record that the day happened, so `done: false` cannot take it back —
+    // deleting the time is what clears the day, and the dashboard says so on the tap.
+    const at = local('2026-08-03T10:00:00-07:00')
+    const cleared = [completion('2026-08-03', false)]
+    const amounts = dayAmounts(counted, [entry(at, at + HOUR)], cleared, days, now)
+    expect(amounts.get('2026-08-03')).toBe(1)
+  })
+
+  it('leaves a cleared day cleared when no time was tracked on it', () => {
+    // `done: false` is still the un-log gesture; it is only tracked time it cannot outrank.
+    const amounts = dayAmounts(counted, [], [completion('2026-08-03', false)], days, now)
+    expect(amounts.get('2026-08-03')).toBeUndefined()
+  })
+
+  it('ignores another activity’s tracked time', () => {
+    const at = local('2026-08-03T10:00:00-07:00')
+    const amounts = dayAmounts(counted, [entry(at, at + HOUR, 'other')], [], days, now)
     expect(amounts.size).toBe(0)
+  })
+
+  it('credits tracked time only inside the days it was handed', () => {
+    // Completions arrive whole, so they are all-time; time is bounded by whatever range the
+    // screen read. A day outside it is not credited — the bound `dayAmounts` documents.
+    const old = local('2019-01-01T10:00:00-08:00')
+    const amounts = dayAmounts(counted, [entry(old, old + HOUR)], [], days, now)
+    expect(amounts.get('2019-01-01')).toBeUndefined()
   })
 
   it('is not bounded by the days handed in, so a streak can run all-time', () => {

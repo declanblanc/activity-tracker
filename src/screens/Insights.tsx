@@ -99,15 +99,22 @@ export default function Insights() {
     ]),
   )
 
+  // The year behind the focused check-off grid. It is in the read below because a day the timer
+  // ran on now counts as checked off — so the grid needs that year of entries, not just the
+  // period being browsed, or last spring's tracked days draw blank.
+  const focusWeeks = focus ? trailingWindows(now, 'week', FOCUS_WEEKS) : []
+
   // One read for the whole screen, spanning every window it will compute over. The
   // bounds are period boundaries, so the once-a-tick `now` does not re-run the query —
   // only crossing into a new period does.
-  const spans = [view, ...trend, ...[...streakWindows.values()].flat()]
+  const spans = [view, ...trend, ...[...streakWindows.values()].flat(), ...focusWeeks]
   const readStart = Math.min(...spans.map((span) => span.start))
   const readEnd = Math.max(...spans.map((span) => span.end))
   const entries = useLiveQuery(() => getEntriesInRange(readStart, readEnd), [readStart, readEnd])
 
   if (!activities || !entries || !completions) return null
+
+  const focusDays = focusWeeks.flatMap((week) => dayWindowsIn(week))
 
   /**
    * One activity's amount in each of `windows` — days for a check-off, milliseconds for a timer.
@@ -325,7 +332,7 @@ export default function Insights() {
               <div className="mt-2">
                 <HeatGrid
                   color={focus.color}
-                  amounts={completionAmounts(focus.id, completions)}
+                  amounts={completionAmounts(focus.id, entries, completions, focusDays, now)}
                   today={dateKey(now)}
                   weeks={FOCUS_WEEKS}
                   weeklyTarget={

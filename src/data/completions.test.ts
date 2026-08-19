@@ -1,20 +1,15 @@
 import 'fake-indexeddb/auto'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from './db.ts'
-import {
-  getCompletions,
-  getCompletionsInRange,
-  setCompletion,
-  toggleCompletion,
-} from './completions.ts'
+import { getCompletions, getCompletionsInRange, setCompletion } from './completions.ts'
 
 beforeEach(async () => {
   await db.completions.clear()
 })
 
-describe('toggleCompletion', () => {
+describe('setCompletion', () => {
   it('records a day as done', async () => {
-    expect(await toggleCompletion('a', '2026-08-03')).toBe(true)
+    await setCompletion('a', '2026-08-03', true)
 
     const rows = await getCompletions()
     expect(rows).toHaveLength(1)
@@ -24,8 +19,8 @@ describe('toggleCompletion', () => {
   it('leaves a `done: false` row behind rather than deleting the row', async () => {
     // The row is the record that a decision was made; only `done` says which way. Deleting
     // it would make "I cleared this day" indistinguishable from "I never touched it".
-    await toggleCompletion('a', '2026-08-03')
-    expect(await toggleCompletion('a', '2026-08-03')).toBe(false)
+    await setCompletion('a', '2026-08-03', true)
+    await setCompletion('a', '2026-08-03', false)
 
     const rows = await getCompletions()
     expect(rows).toHaveLength(1)
@@ -41,36 +36,39 @@ describe('toggleCompletion', () => {
     expect(row.done).not.toBeUndefined()
   })
 
-  it('toggles back on from a cleared day', async () => {
-    await toggleCompletion('a', '2026-08-03')
-    await toggleCompletion('a', '2026-08-03')
-    expect(await toggleCompletion('a', '2026-08-03')).toBe(true)
-    expect(await getCompletions()).toHaveLength(1)
+  it('sets a cleared day back on', async () => {
+    await setCompletion('a', '2026-08-03', true)
+    await setCompletion('a', '2026-08-03', false)
+    await setCompletion('a', '2026-08-03', true)
+
+    const rows = await getCompletions()
+    expect(rows).toHaveLength(1)
+    expect(rows[0].done).toBe(true)
   })
 
   it('cannot produce two rows for one activity-day', async () => {
     await Promise.all([
-      toggleCompletion('a', '2026-08-03'),
-      toggleCompletion('a', '2026-08-03'),
-      toggleCompletion('a', '2026-08-03'),
+      setCompletion('a', '2026-08-03', true),
+      setCompletion('a', '2026-08-03', false),
+      setCompletion('a', '2026-08-03', true),
     ])
     expect(await getCompletions()).toHaveLength(1)
   })
 
   it('keeps different activities and different days apart', async () => {
-    await toggleCompletion('a', '2026-08-03')
-    await toggleCompletion('b', '2026-08-03')
-    await toggleCompletion('a', '2026-08-04')
+    await setCompletion('a', '2026-08-03', true)
+    await setCompletion('b', '2026-08-03', true)
+    await setCompletion('a', '2026-08-04', true)
     expect(await getCompletions()).toHaveLength(3)
   })
 
   it('stamps updatedAt on every write', async () => {
     const before = Date.now()
-    await toggleCompletion('a', '2026-08-03')
+    await setCompletion('a', '2026-08-03', true)
     const [first] = await getCompletions()
     expect(first.updatedAt).toBeGreaterThanOrEqual(before)
 
-    await toggleCompletion('a', '2026-08-03')
+    await setCompletion('a', '2026-08-03', false)
     const [second] = await getCompletions()
     expect(second.updatedAt).toBeGreaterThanOrEqual(first.updatedAt)
   })
@@ -79,7 +77,7 @@ describe('toggleCompletion', () => {
 describe('getCompletionsInRange', () => {
   beforeEach(async () => {
     for (const day of ['2026-07-31', '2026-08-01', '2026-08-09', '2026-08-10']) {
-      await toggleCompletion('a', day)
+      await setCompletion('a', day, true)
     }
   })
 
@@ -99,7 +97,7 @@ describe('getCompletionsInRange', () => {
   })
 
   it('returns cleared days too, so a streak can see the miss', async () => {
-    await toggleCompletion('a', '2026-08-01')
+    await setCompletion('a', '2026-08-01', false)
     const rows = await getCompletionsInRange('2026-08-01', '2026-08-01')
     expect(rows).toHaveLength(1)
     expect(rows[0].done).toBe(false)

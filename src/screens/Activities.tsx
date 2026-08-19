@@ -33,7 +33,7 @@ import {
   saveActivity,
   softDeleteActivity,
 } from '../data/activities.ts'
-import { getCompletions, toggleCompletion } from '../data/completions.ts'
+import { getCompletions, setCompletion } from '../data/completions.ts'
 import {
   getEntriesInRange,
   getOpenEntries,
@@ -53,10 +53,10 @@ import {
 } from '../data/types.ts'
 import { streaks, targetAt } from '../lib/accounting/goals.ts'
 import { periodTotals, totalSince, type PeriodTotals } from '../lib/accounting/totals.ts'
-import { completionAmounts, dayAmounts, periodAmounts } from '../lib/days.ts'
+import { completionAmounts, dayAmounts, periodAmounts, trackedByDay } from '../lib/days.ts'
 import { formatDuration } from '../lib/format.ts'
 import { nextColor } from '../lib/palette.ts'
-import { dayWindow, dayWindowsIn, periodWindow, trailingWindows } from '../lib/time.ts'
+import { dayWindow, dayWindowsIn, formatKey, periodWindow, trailingWindows } from '../lib/time.ts'
 import { useNow } from '../lib/useNow.ts'
 import { useToday } from '../lib/useToday.ts'
 
@@ -254,6 +254,52 @@ export default function Activities() {
   }
 
   /**
+   * Fill a day in or clear it, and say why when it cannot be cleared.
+   *
+   * Returns the reason the day was left alone, or `undefined` when it was written. Time now
+   * checks a day off outright (see `completionAmounts`), so a `done: false` row written over a
+   * tracked day would be a decision the grid never honours: the square would stay filled and the
+   * tap would read as broken. The tap is answered with the reason and the way out — deleting the
+   * time — instead.
+   *
+   * The rule lives here and the wording travels, because the two surfaces that offer the tap
+   * cannot show a message the same way: the sheet is a native `<dialog>` in the top layer, so a
+   * docked toast fired from inside it would be painted underneath.
+   *
+   * Set, not toggle: a day the timer ran on shows as checked off with no row to flip, so what is
+   * inverted is the state on screen, not the state in storage.
+   */
+  const toggleDay = (
+    activity: Activity,
+    stats: ActivityStats,
+    dayKey: DateKey,
+  ): string | undefined => {
+    const tracked = stats.trackedDays.get(dayKey) ?? 0
+    if (tracked > 0) {
+      const when = dayKey === today ? 'Today' : formatKey(dayKey)
+      return (
+        `${when} is checked off because ${formatDuration(tracked)} of “${activity.name}” ` +
+        'is tracked on it. Delete that time to clear the day.'
+      )
+    }
+
+    void setCompletion(activity.id, dayKey, !checked(stats, dayKey))
+    return undefined
+  }
+
+  /** The card's rendering of a refused tap: a toast, with the way to the time that caused it. */
+  const toggleDayFromCard = (activity: Activity, stats: ActivityStats, dayKey: DateKey) => {
+    const refused = toggleDay(activity, stats, dayKey)
+    if (!refused) return
+    setToast({
+      message: refused,
+      until: Date.now() + TOAST_FOR,
+      // A card does not show its stretches; the sheet lists them, and is where one is deleted.
+      action: { label: 'Show time', onAction: () => setOpenId(activity.id) },
+    })
+  }
+
+  /**
    * Move the activity at `index` of the visible list `by` slots and write the whole order back.
    * Hidden activities keep the slots they already hold, so a move never steps over an activity
    * the owner cannot see.
@@ -305,11 +351,11 @@ export default function Activities() {
         // the one that has no control saying so.
         running={startedAt !== undefined}
         compact={compact}
-        onToggleDay={(dayKey) => void toggleCompletion(activity.id, dayKey)}
+        onToggleDay={(dayKey) => toggleDayFromCard(activity, stats, dayKey)}
         thisWeek={stats.thisWeek}
         streak={stats.streak}
         total={stats.total}
-        onToggleToday={() => void toggleCompletion(activity.id, today)}
+        onToggleToday={() => toggleDayFromCard(activity, stats, today)}
         onStop={() => void stop(activity.id)}
       />
     ) : (
@@ -478,7 +524,7 @@ export default function Activities() {
                 // Every activity can hold time now, so an entry can be moved onto any of them.
                 timedActivities={visible}
                 now={now}
-                onDayActivate={(dayKey) => void toggleCompletion(openActivity.id, dayKey)}
+                onDayActivate={(dayKey) => toggleDay(openActivity, stats, dayKey)}
                 onStart={() => void startOrResume(openActivity.id)}
                 onPause={() => void pause(openActivity.id)}
                 onStop={() => void stop(openActivity.id)}
@@ -560,6 +606,11 @@ type ActivityStats = {
    * time is, because `amounts` is then milliseconds.
    */
   gridAmounts: Map<DateKey, number>
+  /**
+   * day → milliseconds tracked, which is *why* some of those squares are filled. Tapping one of
+   * those days cannot clear it, so the screen needs the amount to say what is holding it.
+   */
+  trackedDays: Map<DateKey, number>
   /** Progress inside the current period of the activity's own target. */
   thisPeriod: number
   /** Progress inside the current week, for the card's weekly progress line. */
@@ -589,9 +640,12 @@ function summariseActivity(
 
   // The check-off grid's squares. The sheet always draws this grid, so it is always the
   // check-offs: `amounts` already is them when the check-off is the scored axis; when time is,
-  // `amounts` is milliseconds, so the squares come from the completions directly.
+  // `amounts` is milliseconds, so the squares come from the check-offs directly.
   const gridAmounts =
-    activity.measure === 'count' ? amounts : completionAmounts(activity.id, completions)
+    activity.measure === 'count'
+      ? amounts
+      : completionAmounts(activity.id, entries, completions, days, now)
+  const trackedDays = trackedByDay(activity.id, entries, days, now)
   const trackedTime = totalSince(entries, activity.id, horizon[0].start, now)
 
   // With no target of its own an activity is streaked by the day against any amount at all,
@@ -606,12 +660,35 @@ function summariseActivity(
 
   const total =
     activity.measure === 'count'
-      ? // All-time, because completions are read whole rather than bounded by the horizon.
-        completions.filter((row) => row.activityId === activity.id && row.done).length
+      ? // Days done, which is exactly the keys of the map the grid is drawn from — the ticked
+        // ones and the ones the timer credited. Counting the `done` rows instead would put the
+        // total and the streak beside each other disagreeing, since only one of them saw the
+        // tracked days. All-time for a tick (check-offs are read whole) and horizon-bounded for
+        // a tracked day, which is the bound on the time side everywhere.
+        amounts.size
       : [...amounts.values()].reduce((sum, amount) => sum + amount, 0)
 
-  return { amounts, gridAmounts, thisPeriod, thisWeek, streak: current, longest, total, trackedTime }
+  return {
+    amounts,
+    gridAmounts,
+    trackedDays,
+    thisPeriod,
+    thisWeek,
+    streak: current,
+    longest,
+    total,
+    trackedTime,
+  }
 }
+
+/**
+ * Whether a day currently reads as checked off, which is what a tap on it inverts.
+ *
+ * Not a lookup in the completions table: `gridAmounts` is what the square on screen was drawn
+ * from, and it credits a day the timer ran on as well as one that was ticked. Flipping the
+ * stored row instead would make the first tap on a timer-credited day appear to do nothing.
+ */
+const checked = (stats: ActivityStats, day: DateKey) => (stats.gridAmounts.get(day) ?? 0) > 0
 
 /** The eyebrow that titles a zone, matching the day-summary panel's own label. */
 function ZoneHeading({ children }: { children: ReactNode }) {

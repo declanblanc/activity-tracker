@@ -53,7 +53,25 @@ These are the ones that look wrong until you know why. All are settled decisions
   export translates them back to `null`.
 - **`done: false` is a `Completion`'s tombstone, and a real stored value.** The row records that a
   decision was made; only `done` says which way. Never `done ?? true`, never `!!done`, never drop
-  the row — any of those turn a deliberately cleared day back into a completed one.
+  the row — any of those turn a deliberately cleared day back into a completed one. It also
+  outranks the clock: see the next bullet.
+- **Tracked time checks the day off, and nothing overrules it.** `completionAmounts` credits a
+  day with any tracked time as done — a day you ran the timer on is a day you did the thing, so
+  it fills its square and feeds the streak without also asking for a tap. That is what makes the
+  two axes one habit rather than two ledgers side by side. A `done: false` row on such a day is
+  **inert**, whichever order the two records arrived in; the earlier rule that let it win in
+  either direction is what produced the bug where a day was timed and stayed unchecked forever,
+  with nothing on screen saying why. The interval is the record that the day happened, so
+  deleting the time is the only way to take the day back — and the un-check tap on a tracked
+  square writes nothing and returns the reason instead (`toggleDay` in `Activities.tsx`). That
+  reason is rendered twice because it must be: a card shows it as a toast, and the sheet shows it
+  under its grid, since the sheet is a native `<dialog>` in the top layer and a docked toast
+  fired from inside it would be painted underneath. `done: false` remains the tombstone and the
+  whole of the un-log gesture on an *untracked* day. Two consequences of the credit itself: it is
+  bounded by the `days` handed in (completions arrive whole, time does not), which is why a
+  screen derives its grid and its entries read from one range; and there is **no
+  `toggleCompletion`** — flipping the stored row would make the first tap on a timer-credited day
+  appear to do nothing, so callers pass the state they can see to `setCompletion`.
 - **A `Completion`'s id is derived** from `activityId` and `day`, which makes
   one-row-per-activity-day structural. Import *recomputes* it rather than trusting the file.
 - **Window reads anchor on `endedAt`, not `startedAt`.** An interval intersects a window when

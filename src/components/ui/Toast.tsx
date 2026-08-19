@@ -25,7 +25,9 @@ export default function Toast({
 }): ReactNode {
   return (
     <div role="status" className="docked flex items-center gap-3 rounded-xl bg-raised p-3 shadow-lg">
-      <p className="min-w-0 flex-1 truncate text-sm text-ink">{message}</p>
+      {/* Wraps rather than truncates: a message that explains something — why a tap changed
+          nothing — is a sentence, and half of one says nothing at all. */}
+      <p className="min-w-0 flex-1 text-sm text-ink">{message}</p>
       {action && (
         <button
           type="button"
