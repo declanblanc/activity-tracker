@@ -112,6 +112,19 @@ export function completionAmounts(
 }
 
 /**
+ * One day's amount from each of two activities, for the correlation read in `correlate.ts`.
+ *
+ * A pair, not two maps: only the days both activities have an amount for say anything about
+ * whether they move together, so the intersection is taken once and named here rather than
+ * re-derived by every caller.
+ */
+export type DayPair = {
+  day: DateKey
+  x: number
+  y: number
+}
+
+/**
  * The day amounts summed inside each window, oldest first — exactly `streaks`'s input, and
  * exactly the whole-column total the grid needs to shade a met week.
  *
