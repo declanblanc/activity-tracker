@@ -19,7 +19,7 @@ import { toDateTimeInput } from '../lib/time.ts'
  * One status line at a time, tagged with the section that produced it. Without `section` a sync
  * failure reports itself under the Data buttons, which is where the reader is not looking.
  */
-type Section = 'data' | 'app' | 'sync' | 'delete'
+type Section = 'data' | 'app' | 'sync' | 'delete' | 'seed'
 type Status = { tone: 'ok' | 'error'; message: string; section: Section } | null
 
 /** The word the owner must type before the wipe is allowed to fire. */
@@ -111,6 +111,29 @@ export default function Settings() {
       })
     }
     if (restoreInput.current) restoreInput.current.value = ''
+  }
+
+  /**
+   * Replace everything with the generated sample database.
+   *
+   * Imported dynamically, and only from inside this dev-only branch, so the seed and the year of
+   * history it writes never reach a production bundle.
+   */
+  const seedEverything = () => {
+    const proceed = window.confirm(
+      'Replace ALL current data with the sample database?\n\n' +
+        'Everything on this device is overwritten. This cannot be undone.',
+    )
+    if (!proceed) return
+    void run('seed', async () => {
+      const { seedSampleData } = await import('../data/seed.ts')
+      const { activities, entries, completions } = await seedSampleData()
+      return (
+        `Wrote ${activities} ${plural(activities, 'activity', 'activities')}, ` +
+        `${entries} ${plural(entries, 'entry', 'entries')} and ` +
+        `${completions} ${plural(completions, 'check-off', 'check-offs')}.`
+      )
+    })
   }
 
   const deleteEverything = () =>
@@ -236,6 +259,24 @@ export default function Settings() {
         </p>
         <StatusLine status={status} section="sync" />
       </Section>
+
+      {/* Dev only: a full year of believable history, so working on a screen does not start
+          with tapping activities in. `import.meta.env.DEV` is a literal at build time, so the
+          whole section and its dynamic import are dropped from a production build. */}
+      {import.meta.env.DEV && (
+        <Section title="Sample data">
+          <p className="text-sm text-ink-muted">
+            Replace everything on this device with a generated year of activities, entries and
+            check-offs. Development builds only.
+          </p>
+          <div className="mt-3">
+            <Button onClick={seedEverything} disabled={busy}>
+              Load sample data
+            </Button>
+          </div>
+          <StatusLine status={status} section="seed" />
+        </Section>
+      )}
 
       <Section title="Delete all data">
         <p className="text-sm text-ink-muted">
