@@ -63,8 +63,15 @@ describe('goal on/off', () => {
     expect(toInput({ ...base, hasGoal: false, targetAmount: '3' }).targetPeriod).toBeUndefined()
   })
 
-  it('still carries the scored axis when the goal is off', () => {
-    expect(toInput({ ...base, hasGoal: false, measure: 'duration' }).measure).toBe('duration')
+  it('takes the scored axis from the display mode when the goal is off', () => {
+    // No goal means no separate axis to set: a Timer sums time, a Habit counts days. The
+    // draft's own `measure` is ignored — the card decides.
+    expect(toInput({ ...base, hasGoal: false, display: 'timer', measure: 'count' }).measure).toBe(
+      'duration',
+    )
+    expect(toInput({ ...base, hasGoal: false, display: 'habit', measure: 'duration' }).measure).toBe(
+      'count',
+    )
   })
 
   it('reads a goal-less activity as off, keeping its actual measure', () => {

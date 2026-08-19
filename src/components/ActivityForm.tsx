@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import type { DisplayMode, Measure } from '../data/types.ts'
+import type { DisplayMode } from '../data/types.ts'
 import { ICONS, PALETTE } from '../lib/palette.ts'
 import { GOAL_SHAPES, applyGoalShape, goalShapeOf, type Draft, type GoalShape } from './activityDraft.ts'
 import Button from './ui/Button.tsx'
@@ -153,28 +153,10 @@ export default function ActivityForm({
             <p className="mt-1 text-xs text-ink-muted">{goalHint(draft)}</p>
           </>
         ) : (
-          <>
-            {/* No goal means no shape picker, but the scored axis is still a real choice — it
-                is what the streak, the "total" and the sheet's lead layout are about even
-                without a target to reach. */}
-            <div className="mt-2 flex flex-col gap-2">
-              <MeasureOption
-                label="Check off days"
-                hint="Streak and total count the days you check it off."
-                measure="count"
-                selected={draft.measure}
-                onSelect={(measure) => set('measure', measure)}
-              />
-              <MeasureOption
-                label="Track time"
-                hint="Streak and total count the time you log."
-                measure="duration"
-                selected={draft.measure}
-                onSelect={(measure) => set('measure', measure)}
-              />
-            </div>
-            <p className="mt-1 text-xs text-ink-muted">Just tracked, with nothing to hit.</p>
-          </>
+          // No goal, so no axis to pick either: the streak and total follow the Display mode
+          // above — a Habit counts days, a Timer sums time. Asking again here would repeat the
+          // choice already made at the top of the form.
+          <p className="mt-1 text-xs text-ink-muted">Just tracked, with nothing to hit.</p>
         )}
       </fieldset>
 
@@ -258,41 +240,6 @@ function ModeOption({
         value={mode}
         checked={selected === mode}
         onChange={() => onSelect(mode)}
-        className="focus-ring mt-0.5 size-5 shrink-0 accent-accent"
-      />
-      <span className="min-w-0">
-        <span className="block text-sm font-medium text-ink">{label}</span>
-        <span className="mt-0.5 block text-xs text-ink-muted">{hint}</span>
-      </span>
-    </label>
-  )
-}
-
-/**
- * One scored axis, as a radio with a hint. Only shown once a goal is off — with one on, the
- * shape select already says the axis through its unit ("days" vs "hours").
- */
-function MeasureOption({
-  label,
-  hint,
-  measure,
-  selected,
-  onSelect,
-}: {
-  label: string
-  hint: ReactNode
-  measure: Measure
-  selected: Measure
-  onSelect: (measure: Measure) => void
-}) {
-  return (
-    <label className="flex items-start gap-3">
-      <input
-        type="radio"
-        name="measure"
-        value={measure}
-        checked={selected === measure}
-        onChange={() => onSelect(measure)}
         className="focus-ring mt-0.5 size-5 shrink-0 accent-accent"
       />
       <span className="min-w-0">

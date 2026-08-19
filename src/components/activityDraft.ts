@@ -16,8 +16,8 @@ export type Draft = {
   color: string
   /**
    * The scored axis — which axis the streak, the "total" and the sheet's lead layout are about.
-   * Set by the goal shape while a goal is on; by the standalone toggle in `ActivityForm` while
-   * one is off, since the shape picker is hidden then but the axis still is not.
+   * Set by the goal shape while a goal is on. While one is off it is not the user's to set: the
+   * axis follows the Display mode, so `toInput` derives it and this field is ignored.
    */
   measure: Measure
   /** Which card the Activities list draws. One or the other. See `Activity.display`. */
@@ -127,16 +127,18 @@ export function draftFrom(activity: {
 export function toInput(draft: Draft, id?: string): ActivityInput {
   const amount =
     draft.hasGoal && draft.targetAmount.trim() !== '' ? Number(draft.targetAmount) : undefined
+  // With a goal, the shape already set the scored axis. Without one, there is no separate axis
+  // to store: it follows the card, so a Timer sums time and a Habit counts days.
+  const measure = draft.hasGoal ? draft.measure : draft.display === 'timer' ? 'duration' : 'count'
   return {
     id,
     name: draft.name,
     description: draft.description,
     icon: draft.icon,
     color: draft.color,
-    measure: draft.measure,
+    measure,
     display: draft.display,
-    targetAmount:
-      amount === undefined ? undefined : draft.measure === 'duration' ? amount * HOUR : amount,
+    targetAmount: amount === undefined ? undefined : measure === 'duration' ? amount * HOUR : amount,
     targetPeriod: amount === undefined ? undefined : draft.targetPeriod,
   }
 }
