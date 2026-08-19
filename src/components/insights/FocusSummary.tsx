@@ -2,6 +2,7 @@ import type { Activity, Period } from '../../data/types.ts'
 import { streaks, targetAt, type ScoredPeriod } from '../../lib/accounting/goals.ts'
 import type { PeriodTotals } from '../../lib/accounting/totals.ts'
 import { formatDuration } from '../../lib/format.ts'
+import type { Pace } from '../../lib/pace.ts'
 import Meter from '../ui/Meter.tsx'
 import Stat from '../ui/Stat.tsx'
 import Delta from './Delta.tsx'
@@ -23,20 +24,21 @@ import RunningTimer from './RunningTimer.tsx'
 export default function FocusSummary({
   activity,
   current,
-  previous,
   scale,
   runningSince,
   history,
+  pace,
   now,
 }: {
   activity: Activity
   current: PeriodTotals
-  previous: PeriodTotals
   scale: Period
   /** When the running stretch began, if this activity's timer is going. */
   runningSince?: number
   /** This activity's amounts at its own target period, for the streaks. */
   history: ScoredPeriod[]
+  /** This activity's progress through the viewed period, for a like-for-like delta. */
+  pace: Pace
   now: number
 }) {
   if (activity.measure === 'count') {
@@ -46,11 +48,16 @@ export default function FocusSummary({
     const done = history.reduce((sum, period) => sum + period.total, 0)
 
     return (
-      <dl className="mt-4 grid grid-cols-3 gap-3">
-        <Stat label="Current" value={streak} unit={unit} />
-        <Stat label="Longest" value={longest} unit={unit} />
-        <Stat label="Logged" value={done} unit="days" />
-      </dl>
+      <div className="panel mt-4 p-4">
+        <p className="text-2xs font-semibold tracking-widest text-ink-muted uppercase">
+          Streak
+        </p>
+        <dl className="mt-2 grid grid-cols-3 gap-3">
+          <Stat label="Current" value={streak} unit={unit} />
+          <Stat label="Longest" value={longest} unit={unit} />
+          <Stat label="Logged" value={done} unit="days" />
+        </dl>
+      </div>
     )
   }
 
@@ -65,11 +72,7 @@ export default function FocusSummary({
         {/* Above the delta rather than below it: it explains why the number over it is still
             moving, which the comparison to last week does not. */}
         {runningSince !== undefined && <RunningTimer startedAt={runningSince} />}
-        <Delta
-          from={previous.perActivity.get(activity.id) ?? 0}
-          to={total}
-          label={`vs previous ${scale}`}
-        />
+        <Delta pace={pace} scale={scale} />
       </div>
       <div className="panel flex-1 p-3">
         <p className="text-2xs font-semibold tracking-widest text-ink-muted uppercase">

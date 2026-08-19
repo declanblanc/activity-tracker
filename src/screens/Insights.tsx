@@ -21,6 +21,8 @@ import { targetAt, type ScoredPeriod } from '../lib/accounting/goals.ts'
 import { bucketTotals } from '../lib/accounting/totals.ts'
 import { completionAmounts, dayAmounts, periodAmounts } from '../lib/days.ts'
 import { periodLabel, thisPeriod } from '../lib/format.ts'
+import { pace, type Pace } from '../lib/pace.ts'
+import type { DateKey } from '../data/types.ts'
 import { dateKey, dayWindowsIn, periodWindow, trailingWindows, type TimeWindow } from '../lib/time.ts'
 import { useNow } from '../lib/useNow.ts'
 
@@ -107,28 +109,70 @@ export default function Insights() {
   if (!activities || !entries || !completions) return null
 
   const focusDays = focusWeeks.flatMap((week) => dayWindowsIn(week))
+  // Every day the screen computes over, derived once. `pace` and `periodAmounts` both look days
+  // up by key, so one map per activity serves every window on screen.
+  const readDays = dayWindowsIn({ start: readStart, end: Math.min(readEnd, now) })
 
   /**
-   * One activity's amount in each of `windows` — days for a check-off, milliseconds for a timer.
+   * One activity's day amounts — days for a check-off, milliseconds for a timer — cached for
+   * the render.
    *
-   * This is the bridge that lets the goals panel and the focused trend serve both measures from
-   * one code path: `dayAmounts` erases the difference, and everything downstream is arithmetic.
-   * The panels that stay duration-only below read `PeriodTotals` directly instead, because they
-   * are about wall-clock coverage, which a check-off has nothing to say about.
+   * This is the bridge that lets the goals panel, the focused trend and every pace comparison
+   * serve both measures from one code path: `dayAmounts` erases the difference, and everything
+   * downstream is arithmetic. The panels that stay duration-only below read `PeriodTotals`
+   * instead, because they are about wall-clock coverage, which a check-off has nothing to say
+   * about.
    */
-  const amountsFor = (activity: Activity, windows: TimeWindow[]): ScoredPeriod[] => {
-    const days = dayWindowsIn({ start: readStart, end: Math.min(readEnd, now) })
-    return periodAmounts(dayAmounts(activity, entries, completions, days, now), windows)
+  const amountCache = new Map<string, Map<DateKey, number>>()
+  const amountsByDay = (activity: Activity): Map<DateKey, number> => {
+    const cached = amountCache.get(activity.id)
+    if (cached) return cached
+    const fresh = dayAmounts(activity, entries, completions, readDays, now)
+    amountCache.set(activity.id, fresh)
+    return fresh
   }
+
+  const amountsFor = (activity: Activity, windows: TimeWindow[]): ScoredPeriod[] =>
+    periodAmounts(amountsByDay(activity), windows)
 
   // These panels are about tracked wall-clock, so the records answer this, not any display
   // choice: every activity may hold intervals whatever card the Activities list gives it.
   const anyTimed = entries.length > 0
   const byPeriod = bucketTotals(entries, trend, now)
-  // The trend's last bucket *is* the viewed period, so the comparison against the one
-  // before it comes free.
+  // The trend's last bucket *is* the viewed period, so the period before it comes free.
   const current = byPeriod[byPeriod.length - 1]
   const previous = byPeriod[byPeriod.length - 2]
+
+  /**
+   * Wall-clock time by day, for both the coverage pace and each breakdown row's.
+   *
+   * Bucketed by day and then summed, which is exact for the union as well as for the
+   * per-activity totals: local days partition the period with no gap and no overlap, so the
+   * union restricted to each day adds up to the union over the whole of it.
+   */
+  const viewDays = dayWindowsIn(view)
+  // Said once in the goals header rather than on every row: how long the period has to run
+  // is a fact about the period, not about any goal inside it.
+  const daysLeft = viewDays.filter((day) => day.end > now).length
+  const paceDays = dayWindowsIn({ start: previous.window.start, end: view.end })
+  const paceBuckets = bucketTotals(entries, paceDays, now)
+  const trackedByDay = new Map(
+    paceBuckets.map((bucket) => [dateKey(bucket.window.start), bucket.tracked]),
+  )
+  const timeByDay = new Map<string, Map<DateKey, number>>()
+  for (const bucket of paceBuckets) {
+    const day = dateKey(bucket.window.start)
+    for (const [activityId, total] of bucket.perActivity) {
+      const own = timeByDay.get(activityId) ?? new Map<DateKey, number>()
+      own.set(day, total)
+      timeByDay.set(activityId, own)
+    }
+  }
+
+  /** How far into the viewed period a series is, against the same span of the one before. */
+  const paceOf = (amounts: Map<DateKey, number>): Pace =>
+    pace(amounts, view, previous.window, now)
+  const timePace = (activityId: string) => paceOf(timeByDay.get(activityId) ?? new Map())
   // Only while the period on screen is the one the clock is in: a live timer above last
   // May's totals says nothing about last May.
   const runningSince =
@@ -258,29 +302,45 @@ export default function Insights() {
         // layout with a column ending at 60% of the other. Columns balance by height
         // instead, and `break-inside-avoid` keeps a panel whole.
         <div className="xl:columns-2 xl:gap-6 [&>*]:break-inside-avoid">
-          {focus ? (
+          {focus && (
             <FocusSummary
               activity={focus}
               current={current}
-              previous={previous}
               scale={scale}
               runningSince={runningSince}
               history={amountsFor(focus, streakWindows.get(focus.targetPeriod ?? 'day') ?? [])}
+              pace={timePace(focus.id)}
               now={now}
             />
-          ) : (
-            // Coverage of the period, so it needs something timed to be coverage *of*.
-            anyTimed && <Coverage current={current} previous={previous} scale={scale} />
           )}
 
+          <Goals
+            // Passing the one activity is all the filtering the panel needs; it already skips
+            // anything without a target at this scale.
+            activities={focus ? [focus] : activities}
+            scale={scale}
+            currentAmount={(activity) => amountsFor(activity, [view])[0]?.total ?? 0}
+            historyFor={(activity) => amountsFor(activity, streakWindows.get(scale) ?? [])}
+            paceFor={(activity) => paceOf(amountsByDay(activity))}
+            daysLeft={daysLeft}
+            now={now}
+          />
+
           {/* Focused: this activity's own series, in its own unit. Unfocused: the tracked
-              union, which only timed activities contribute to. */}
+              union, which only timed activities contribute to.
+
+              A check-off at the day scale gets no chart at all: its bars are twelve identical
+              units, one per logged day, and a bar chart of a binary draws nothing the grid
+              below does not draw better. This is the sanctioned kind of `measure` branch — it
+              picks which components render, and computes no second number. */}
           {focus ? (
-            <Trend
+            !(focus.measure === 'count' && scale === 'day') && <Trend
               periods={amountsFor(focus, trend)}
               scale={scale}
               measure={focus.measure}
               title={focus.name}
+              projected={paceOf(amountsByDay(focus)).projected}
+              now={now}
             />
           ) : (
             anyTimed && (
@@ -289,6 +349,8 @@ export default function Insights() {
                 scale={scale}
                 measure="duration"
                 title="Tracked"
+                projected={paceOf(trackedByDay).projected}
+                now={now}
               />
             )
           )}
@@ -299,18 +361,19 @@ export default function Insights() {
               ponytail: no count sibling to this panel. The goals panel covers the ones with a
               goal, and the dashboard's grid covers the rest. */}
           {!focus && anyTimed && (
-            <Breakdown current={current} previous={previous} activities={activities} />
+            <Breakdown
+              current={current}
+              activities={activities}
+              scale={scale}
+              paceFor={timePace}
+            />
           )}
 
-          <Goals
-            // Passing the one activity is all the filtering the panel needs; it already skips
-            // anything without a target at this scale.
-            activities={focus ? [focus] : activities}
-            scale={scale}
-            currentAmount={(activity) => amountsFor(activity, [view])[0]?.total ?? 0}
-            historyFor={(activity) => amountsFor(activity, streakWindows.get(scale) ?? [])}
-            now={now}
-          />
+          {/* Coverage of the period, so it needs something timed to be coverage *of*. Last and
+              collapsed: it is context for the panels above, not the headline it used to be. */}
+          {!focus && anyTimed && (
+            <Coverage current={current} scale={scale} pace={paceOf(trackedByDay)} />
+          )}
 
           {/* Anything checked off — see `HeatGrid`. Every activity can be, so this shows for any
               focused one. The squares come from the check-offs directly, since for a time-scored
