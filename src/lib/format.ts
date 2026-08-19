@@ -1,4 +1,5 @@
-import type { Measure } from '../data/types.ts'
+import type { Measure, Period } from '../data/types.ts'
+import type { TimeWindow } from './time.ts'
 
 const MINUTE = 60 * 1000
 
@@ -56,4 +57,37 @@ export function formatAmount(measure: Measure, amount: number, bare = false): st
  */
 export function formatTime(at: number): string {
   return new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+}
+
+/** What the period containing `now` is called, so a stepper at the present says so. */
+export function thisPeriod(scale: Period): string {
+  return { day: 'Today', week: 'This week', month: 'This month' }[scale]
+}
+
+/** `Fri, Jul 31`, `Jul 26 – Aug 1`, or `July 2026`. */
+export function periodLabel(window: TimeWindow, scale: Period): string {
+  const date = (at: number, options: Intl.DateTimeFormatOptions) =>
+    new Date(at).toLocaleDateString([], options)
+
+  if (scale === 'month') return date(window.start, { month: 'long', year: 'numeric' })
+  if (scale === 'day') return date(window.start, { weekday: 'short', month: 'short', day: 'numeric' })
+
+  const day = { month: 'short', day: 'numeric' } as const
+  // The window end is exclusive, so the label names the last day inside it.
+  return `${date(window.start, day)} – ${date(window.end - 1, day)}`
+}
+
+/**
+ * The short form that fits under a bar. A bare day number is ambiguous once the run of
+ * weeks crosses a month, so a week is labelled by the month too; the axis drops whatever
+ * does not fit and the tooltip carries the full range either way.
+ */
+export function tickLabel(window: TimeWindow, scale: Period): string {
+  const options: Intl.DateTimeFormatOptions =
+    scale === 'month'
+      ? { month: 'short' }
+      : scale === 'week'
+        ? { month: 'short', day: 'numeric' }
+        : { day: 'numeric' }
+  return new Date(window.start).toLocaleDateString([], options)
 }
