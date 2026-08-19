@@ -40,6 +40,15 @@ type Ranked = Highlight & { rank: number; magnitude: number }
 const MOVER_THRESHOLD = 0.3
 /** Periods needed before the one being compared, so a mover is never just noise. */
 const MIN_BASELINE_PERIODS = 3
+/**
+ * Scales a mover is worth reporting at.
+ *
+ * A single day against a ten-day average is not a trend, it is a coin toss: anything done every
+ * other day swings by 100% in one direction or the other every time, and the screen was
+ * reporting "up 400% last day" as though it were news. A week and a month are aggregates already
+ * and average that noise away, which is the whole reason the comparison means anything there.
+ */
+const MOVER_SCALES: Period[] = ['week', 'month']
 
 /** The top `limit` highlights across every activity, most actionable first. */
 export function buildDigest(
@@ -86,7 +95,7 @@ function forActivity(
     }
   }
 
-  const mover = findMover(activity, trend, now, scale)
+  const mover = MOVER_SCALES.includes(scale) ? findMover(activity, trend, now, scale) : null
   if (mover) highlights.push(mover)
 
   return highlights
@@ -106,10 +115,16 @@ function findMover(
   scale: Period,
 ): Ranked | null {
   const closed = trend.filter((period) => period.window.end <= now)
-  if (closed.length < MIN_BASELINE_PERIODS + 1) return null
+  // The baseline starts when the activity did. Periods before its first record are not quiet
+  // periods, they are periods it did not exist for, and averaging them in divides by a history
+  // that never happened — which is what produced "up 328% vs its 10-month average" for an
+  // activity two months old. Interior zeros stay: those are real, and they are the point.
+  const began = closed.findIndex((period) => period.total > 0)
+  const lived = began === -1 ? [] : closed.slice(began)
+  if (lived.length < MIN_BASELINE_PERIODS + 1) return null
 
-  const last = closed[closed.length - 1]
-  const baseline = closed.slice(0, -1)
+  const last = lived[lived.length - 1]
+  const baseline = lived.slice(0, -1)
   const mean = baseline.reduce((sum, period) => sum + period.total, 0) / baseline.length
   if (mean <= 0) return null
 

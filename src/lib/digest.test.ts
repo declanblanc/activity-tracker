@@ -139,3 +139,56 @@ describe('buildDigest', () => {
     expect(digest[0].text).toContain('Deep Work')
   })
 })
+
+describe('buildDigest at the day scale', () => {
+  const now = local('2026-07-31T09:00:00-07:00')
+  const days = trailingWindows(now, 'day', 12)
+
+  it('reports no mover, because one day against an average is a coin toss', () => {
+    const input: ActivityDigestInput = {
+      activity: activity({ name: 'Long walk' }),
+      // Every other day, which swings 100% either way every single day.
+      trend: days.map((window, index) => ({ window, total: index % 2 === 0 ? 0 : 2 * HOUR })),
+    }
+
+    expect(buildDigest([input], 'day', now)).toEqual([])
+  })
+
+  it('still says a goal is about to break a streak', () => {
+    const input: ActivityDigestInput = {
+      activity: activity({ name: 'Reading', measure: 'count' }),
+      goal: { target: 1, total: 0, streak: { current: 4, longest: 6 } },
+      trend: days.map((window) => ({ window, total: 1 })),
+    }
+
+    expect(buildDigest([input], 'day', now)[0].text).toContain('4-day streak')
+  })
+})
+
+describe('a baseline the activity was not alive for', () => {
+  const now = local('2026-07-31T09:00:00-07:00')
+  const months = trailingWindows(now, 'month', 12)
+
+  const inputOf = (totals: number[]): ActivityDigestInput => ({
+    activity: activity({ name: 'Sleep' }),
+    trend: months.slice(months.length - totals.length).map((window, index) => ({
+      window,
+      total: totals[index] * HOUR,
+    })),
+  })
+
+  it('does not average in the months before the first record', () => {
+    // Eight empty months, then a steady two — no swing, and nothing worth saying.
+    expect(buildDigest([inputOf([0, 0, 0, 0, 0, 0, 0, 0, 100, 100, 100])], 'month', now)).toEqual([])
+  })
+
+  it('still counts a gap the activity lived through', () => {
+    // The final total is the month in progress, which `findMover` never compares — so the last
+    // *closed* month is the second from the end in each of these.
+    const interior = buildDigest([inputOf([100, 100, 100, 10, 100, 999])], 'month', now)
+    expect(interior).toEqual([])
+
+    const justHappened = buildDigest([inputOf([100, 100, 100, 100, 10, 999])], 'month', now)
+    expect(justHappened[0].text).toContain('down')
+  })
+})

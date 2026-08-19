@@ -21,7 +21,9 @@ export type DoneRow = {
  */
 export default function WhatGotDone({ rows, daysElapsed }: { rows: DoneRow[]; daysElapsed: number }) {
   const shown = rows.filter((row) => row.done > 0).sort((a, b) => b.done - a.done)
-  if (shown.length === 0 || daysElapsed === 0) return null
+  // A single day can only ever be 1 of 1, so every row would be a full bar — and a full bar
+  // means "goal met" everywhere else in the app. One day's check-offs are what Today is for.
+  if (shown.length === 0 || daysElapsed <= 1) return null
 
   return (
     <div className="panel mt-4">
