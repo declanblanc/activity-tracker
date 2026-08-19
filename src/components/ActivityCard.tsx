@@ -133,10 +133,12 @@ type Shared = {
  * runs. One class string because the two swap places: a control that changed size or shape as
  * the timer started would move the card's header under the thumb that started it.
  *
+ * `compact` shrinks it to match the compact timer cards' controls, below the usual 44px target.
+ *
  * The "pop" is a CSS transform on press. A spring library would buy nothing a 120ms scale cannot.
  */
-const ROUND_ACTION =
-  'focus-ring size-11 shrink-0 rounded-full transition-transform duration-100 active:scale-90'
+const roundAction = (compact: boolean) =>
+  `focus-ring ${compact ? 'size-9' : 'size-11'} shrink-0 rounded-full transition-transform duration-100 active:scale-90`
 
 const streakLabel = (length: number, unit: 'day' | 'week') =>
   length > 0 ? `${length} ${unit} streak` : 'No streak yet'
@@ -286,6 +288,7 @@ export function CountCard({
   const { activity } = shared
   const doneToday = (amounts.get(today) ?? 0) > 0
   const [strip, weeks] = useFittingWeeks(CARD_MAX_WEEKS)
+  const round = roundAction(compact)
 
   return (
     <CardShell
@@ -307,7 +310,7 @@ export function CountCard({
             type="button"
             onClick={onStop}
             aria-label={`Stop ${activity.name}`}
-            className={`${ROUND_ACTION} grid place-items-center`}
+            className={`${round} grid place-items-center`}
             style={{ backgroundColor: activity.color, color: 'var(--color-slate-950)' }}
           >
             <Square className="size-4 fill-current" />
@@ -320,7 +323,7 @@ export function CountCard({
             aria-label={
               doneToday ? `Un-log ${activity.name} for today` : `Log ${activity.name} for today`
             }
-            className={`${ROUND_ACTION} grid place-items-center text-lg font-semibold`}
+            className={`${round} grid place-items-center text-lg font-semibold`}
             style={{
               backgroundColor: doneToday ? activity.color : 'transparent',
               boxShadow: doneToday ? 'none' : `inset 0 0 0 2px ${activity.color}`,
@@ -408,6 +411,7 @@ export function DurationCard({
           <IconButton
             label={`${running ? 'Pause' : inBlock ? 'Resume' : 'Start'} ${activity.name}`}
             variant="quiet"
+            compact={compact}
             aria-pressed={running}
             onClick={running ? onPause : onStart}
           >
@@ -417,15 +421,21 @@ export function DurationCard({
           {/* Stopping is rarer than pausing and it ends something, so it gets a target the
               same size and a surface it does not have. Present but invisible when there is
               no block to end: reserving the slot is what stops the name's width — and so
-              whether it truncates — changing under the thumb that just started the timer. */}
-          <IconButton
-            label={`Stop ${activity.name}`}
-            onClick={onStop}
-            disabled={!inBlock}
-            className={inBlock ? '' : 'invisible'}
-          >
-            <Square className="size-4" />
-          </IconButton>
+              whether it truncates — changing under the thumb that just started the timer.
+              Compact drops the reservation: a second 44px slot beside the first leaves no room
+              for the name in a two-up column, and that layout truncates the name regardless, so
+              the width-shift the reservation guards against no longer costs anything. */}
+          {(inBlock || !compact) && (
+            <IconButton
+              label={`Stop ${activity.name}`}
+              compact={compact}
+              onClick={onStop}
+              disabled={!inBlock}
+              className={inBlock ? '' : 'invisible'}
+            >
+              <Square className="size-4" />
+            </IconButton>
+          )}
         </>
       }
     />

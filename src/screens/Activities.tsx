@@ -435,7 +435,9 @@ export default function Activities() {
           contributes no time, and cannot be in either the numerator or the denominator.
           ponytail: no count half to this panel — "4 of 6 done today" is legible from the grid
           below, where a completed card wears a filled tick. */}
-      {anyTimed && <DaySummary day={dayTotals} running={openEntries.length} />}
+      {anyTimed && (
+        <DaySummary day={dayTotals} running={openEntries.length} compact={compact} />
+      )}
 
       {activities.length === 0 && (
         <EmptyState
@@ -463,6 +465,13 @@ export default function Activities() {
             activities={timers}
             editing={reordering}
             compact={compact}
+            dense
+            // A timer mid-block shows both Pause and Stop, which will not fit a half-width cell,
+            // so it takes the whole row. `startedAtByActivity` misses a paused block, so the
+            // stored block marker is the first source, its open entry the fallback.
+            fullWidth={(activity) =>
+              (blockStartedAt[activity.id] ?? startedAtByActivity.get(activity.id)) !== undefined
+            }
             onReorder={persistZoneOrder}
             renderCard={renderCard}
           />
@@ -709,17 +718,30 @@ function ZoneHeading({ children }: { children: ReactNode }) {
  * wears. `rectSortingStrategy` is the grid-aware one, so the cards reflow across rows as one moves.
  * The grid template is the same one the dashboard has always used; only the parent's width cap
  * changed, which is what lets it fan out to three columns on a desktop.
+ *
+ * `dense` narrows the compact column so two cards fit a phone row. Only the timer zone asks for
+ * it: a timer card is a short row that wasted the width beside it, where a check-off card carries
+ * a week strip that wants the whole width to itself.
  */
 function ActivityZone({
   activities,
   editing,
   compact,
+  dense = false,
+  fullWidth,
   onReorder,
   renderCard,
 }: {
   activities: Activity[]
   editing: boolean
   compact: boolean
+  dense?: boolean
+  /**
+   * Which cards break out of the dense two-up back to a full row. A timer with an open block
+   * carries two controls that a half-width column has no room for; it is also the one card here
+   * worth the prominence. Only consulted when the grid is actually packing cards two-up.
+   */
+  fullWidth?: (activity: Activity) => boolean
   onReorder: (orderedIds: string[]) => void
   renderCard: (activity: Activity) => ReactNode
 }) {
@@ -737,19 +759,27 @@ function ActivityZone({
     if (from !== -1 && to !== -1) onReorder(arrayMove(ids, from, to))
   }
 
+  // The smallest a card's column may shrink to before the grid wraps to fewer of them. A shorter
+  // card wants a narrower column, so compact packs more across as well as down; `dense` narrows it
+  // again to two on a phone. `min(…,100%)` keeps a single card from overflowing a hand's-width screen.
+  const minColumn = !compact ? '20rem' : dense ? '10rem' : '15rem'
+
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={ids} strategy={rectSortingStrategy}>
         <div
-          className={`mt-3 grid items-start ${compact ? 'gap-2' : 'gap-4'} ${
-            // A shorter card wants a narrower column too, so compact packs more across as well as down.
-            compact
-              ? '[grid-template-columns:repeat(auto-fill,minmax(min(15rem,100%),1fr))]'
-              : '[grid-template-columns:repeat(auto-fill,minmax(min(20rem,100%),1fr))]'
-          }`}
+          className={`mt-3 grid items-start ${compact ? 'gap-2' : 'gap-4'}`}
+          style={{
+            gridTemplateColumns: `repeat(auto-fill, minmax(min(${minColumn}, 100%), 1fr))`,
+          }}
         >
           {activities.map((activity) => (
-            <SortableCard key={activity.id} id={activity.id} editing={editing}>
+            <SortableCard
+              key={activity.id}
+              id={activity.id}
+              editing={editing}
+              fullWidth={compact && dense && (fullWidth?.(activity) ?? false)}
+            >
               {renderCard(activity)}
             </SortableCard>
           ))}
@@ -768,10 +798,13 @@ function ActivityZone({
 function SortableCard({
   id,
   editing,
+  fullWidth = false,
   children,
 }: {
   id: string
   editing: boolean
+  /** Span every column of the grid rather than one, for a card that needs a whole row. */
+  fullWidth?: boolean
   children: ReactNode
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -782,6 +815,7 @@ function SortableCard({
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 10 : undefined,
+    gridColumn: fullWidth ? '1 / -1' : undefined,
   }
 
   if (!editing) {
@@ -822,8 +856,24 @@ function SortableCard({
  *
  * This is deliberately a different question from the number on a card. A card counts its block;
  * this counts the day. They are not meant to agree, so they say which they are.
+ *
+ * Compact strips it to the coverage bar alone — no panel, no label, no readings. The bar still
+ * carries the one thing worth a glance (how much of the day is accounted for), and the words it
+ * loses are the density compact is spending here.
  */
-function DaySummary({ day, running }: { day: PeriodTotals; running: number }) {
+function DaySummary({
+  day,
+  running,
+  compact,
+}: {
+  day: PeriodTotals
+  running: number
+  compact: boolean
+}) {
+  const covered = day.length > 0 ? day.tracked / day.length : 0
+
+  if (compact) return <Meter fraction={covered} className="!mt-3" />
+
   return (
     // Stacked on a phone; a horizontal strip from `md` up, where the coverage bar takes the
     // surplus width rather than the panel being stretched around a short one.
@@ -838,10 +888,7 @@ function DaySummary({ day, running }: { day: PeriodTotals; running: number }) {
       </div>
       {/* `!` overrides the `mt-2` baked into Meter: it wants a top gap when stacked and none
           when it sits in the row. */}
-      <Meter
-        fraction={day.length > 0 ? day.tracked / day.length : 0}
-        className="!mt-2 md:!mt-0 md:flex-1"
-      />
+      <Meter fraction={covered} className="!mt-2 md:!mt-0 md:flex-1" />
       <p className="mt-2 text-xs text-ink-muted md:mt-0 md:shrink-0 md:whitespace-nowrap">
         {formatDuration(day.untracked)} untracked of {formatDuration(day.length)} so far
         {running > 0 && ` · ${running} running`}

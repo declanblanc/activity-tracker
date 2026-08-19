@@ -55,23 +55,34 @@ export default function Button({
  * `label` is required rather than optional — an icon-only control with no accessible
  * name is the single easiest a11y bug to ship, and making the prop mandatory is the
  * cheapest way to make it unshippable.
+ *
+ * The size class is the whole height here, so this does not carry `BASE`'s `min-h-11`: at the
+ * default `size-11` the two agree, and `compact` deliberately drops below the 44px floor to
+ * `size-9` — a density trade the compact dashboard opts into, where a 44px `min-h` would only
+ * fight the smaller size and win.
  */
+const ICON_BASE =
+  'focus-ring inline-flex items-center justify-center rounded-lg transition-colors disabled:opacity-40'
+
 export function IconButton({
   label,
   variant = 'ghost',
+  compact = false,
   className = '',
   children,
   ...rest
 }: Omit<ComponentProps<'button'>, 'aria-label'> & {
   label: string
   variant?: Variant
+  /** Shrink to `size-9` for the compact dashboard, below the usual 44px target. */
+  compact?: boolean
   children: ReactNode
 }) {
   return (
     <button
       type="button"
       aria-label={label}
-      className={`${BASE} size-11 shrink-0 ${VARIANTS[variant]} ${className}`}
+      className={`${ICON_BASE} ${compact ? 'size-9' : 'size-11'} shrink-0 ${VARIANTS[variant]} ${className}`}
       {...rest}
     >
       {children}
