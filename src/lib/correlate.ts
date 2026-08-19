@@ -1,5 +1,5 @@
-import type { Measure } from '../data/types.ts'
-import type { DayPair } from './days.ts'
+import type { DateKey, Measure } from '../data/types.ts'
+import { pairDays, type DayPair } from './days.ts'
 import { formatAmount } from './format.ts'
 
 /**
@@ -66,4 +66,45 @@ export function describeCorrelation(
 
   const direction = gap > 0 ? 'more' : 'less'
   return `On days with more ${xLabel}, ${yLabel} tended to be ${formatAmount(measureY, Math.abs(gap))} ${direction} — across ${points.length} overlapping days.`
+}
+
+/** One activity offered as a partner for the correlation read. */
+export type Candidate = {
+  label: string
+  measure: Measure
+  days: Map<DateKey, number>
+}
+
+/**
+ * The strongest describable link between `subject` and any of `others`, or `null` when none
+ * clears the bar `describeCorrelation` sets.
+ *
+ * One sentence, not a ranked list. A screen showing every pair it could find would be back to
+ * furniture — and the weaker halves of such a list are exactly the coincidences this module
+ * exists to refuse. Ranked by |r|, which orders how *linear* each link is; the sentence itself
+ * still reports a magnitude, because that is the part a reader can act on.
+ */
+export function strongestLink(
+  subject: { label: string; days: Map<DateKey, number> },
+  others: Candidate[],
+): string | null {
+  let best: { strength: number; sentence: string } | null = null
+
+  for (const other of others) {
+    const points = pairDays(subject.days, other.days)
+    if (points.length < MIN_POINTS) continue
+
+    const strength = Math.abs(
+      pearson(
+        points.map((point) => point.x),
+        points.map((point) => point.y),
+      ),
+    )
+    if (best !== null && strength <= best.strength) continue
+
+    const sentence = describeCorrelation(points, subject.label, other.label, other.measure)
+    if (sentence !== null) best = { strength, sentence }
+  }
+
+  return best?.sentence ?? null
 }

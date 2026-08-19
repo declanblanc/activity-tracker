@@ -8,7 +8,7 @@ import {
   type Entry,
 } from '../data/types.ts'
 import { bucketTotals } from './accounting/totals.ts'
-import { dayAmounts, periodAmounts } from './days.ts'
+import { dayAmounts, pairDays, periodAmounts } from './days.ts'
 import { dateKey, dayWindowsIn, dayWindow, monthWindow, trailingWindows, weekWindow } from './time.ts'
 
 // Pinned to America/Los_Angeles by vite.config.ts.
@@ -321,5 +321,40 @@ describe('periodAmounts', () => {
     const amounts = new Map([['2026-08-03', 1]])
     const yesterday = dayWindow(local('2026-08-02T12:00:00-07:00'))
     expect(periodAmounts(amounts, [yesterday])[0].total).toBe(0)
+  })
+})
+
+describe('pairDays', () => {
+  it('zero-fills the days one activity had and the other did not', () => {
+    const x = new Map([
+      ['2026-08-01', 2],
+      ['2026-08-03', 5],
+    ])
+    const y = new Map([['2026-08-02', 7]])
+
+    expect(pairDays(x, y)).toEqual([
+      { day: '2026-08-01', x: 2, y: 0 },
+      { day: '2026-08-02', x: 0, y: 7 },
+      { day: '2026-08-03', x: 5, y: 0 },
+    ])
+  })
+
+  it('is bounded by the days something happened on, not by the maps handed in', () => {
+    // A duration map carries a key for every day read, most of them zero.
+    const x = new Map([
+      ['2026-07-01', 0],
+      ['2026-08-01', 3],
+      ['2026-09-01', 0],
+    ])
+    const y = new Map([['2026-08-02', 4]])
+
+    const pairs = pairDays(x, y)
+
+    expect(pairs).toHaveLength(2)
+    expect(pairs[0].day).toBe('2026-08-01')
+  })
+
+  it('has nothing to say about two activities that never happened', () => {
+    expect(pairDays(new Map([['2026-08-01', 0]]), new Map())).toEqual([])
   })
 })

@@ -125,6 +125,33 @@ export type DayPair = {
 }
 
 /**
+ * Two activities' amounts on the days either of them has anything at all.
+ *
+ * Bounded by the first and last day *either* map has a non-zero amount for, and zero-filled
+ * between: a day one activity happened on and the other did not is exactly the kind of day a
+ * correlation is about, so dropping it would leave only the days they agreed and report every
+ * pair as moving together. Days outside that span are dropped because neither activity existed
+ * yet, and a run of (0, 0) pairs before either began inflates the count without saying anything.
+ *
+ * Measure-agnostic, like everything downstream of `dayAmounts`: a check-off's 1 and a timer's
+ * milliseconds are both just amounts, and `correlate.ts` puts the unit back on at the end.
+ */
+export function pairDays(x: Map<DateKey, number>, y: Map<DateKey, number>): DayPair[] {
+  const touched = [...x, ...y].flatMap(([day, amount]) => (amount > 0 ? [day] : []))
+  if (touched.length === 0) return []
+
+  // Keys are zero-padded, so lexical order is chronological order.
+  const first = touched.reduce((low, day) => (day < low ? day : low))
+  const last = touched.reduce((high, day) => (day > high ? day : high))
+
+  const pairs: DayPair[] = []
+  for (let day = first; day <= last; day = shiftKey(day, 1)) {
+    pairs.push({ day, x: x.get(day) ?? 0, y: y.get(day) ?? 0 })
+  }
+  return pairs
+}
+
+/**
  * The day amounts summed inside each window, oldest first — exactly `streaks`'s input, and
  * exactly the whole-column total the grid needs to shade a met week.
  *
