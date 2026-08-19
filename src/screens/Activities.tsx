@@ -301,12 +301,16 @@ export default function Activities() {
         // otherwise fill its squares from milliseconds. Same series the sheet's grid draws.
         amounts={stats.gridAmounts}
         today={today}
+        // Any activity's timer can be running, started from its own sheet — the habit card is
+        // the one that has no control saying so.
+        running={startedAt !== undefined}
         compact={compact}
         onToggleDay={(dayKey) => void toggleCompletion(activity.id, dayKey)}
         thisWeek={stats.thisWeek}
         streak={stats.streak}
         total={stats.total}
         onToggleToday={() => void toggleCompletion(activity.id, today)}
+        onStop={() => void stop(activity.id)}
       />
     ) : (
       <DurationCard

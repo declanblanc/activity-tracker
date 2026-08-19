@@ -152,6 +152,25 @@ html {
   }
 
   /**
+   * An empty square on a *running* card, whose fill the tint has moved.
+   *
+   * The square is opaque `raised`, so it did not move with it: at 8% activity over `surface`,
+   * the card's fill climbs to meet the square and the step that makes an empty day visible at
+   * all collapses — 1.00:1 at worst across the palette, which is two greys of identical
+   * luminance and the reason the grid vanished under a running timer.
+   *
+   * The fix is to move the square's own base by the same 8%, since the tint is the whole card's
+   * and the square is part of it. That restores the untinted step exactly (1.20:1 against the
+   * tinted fill, where an untinted card reads 1.18:1) and costs `partial` vs empty 3.64 → 3.12,
+   * still clear of the 3:1 that fill is chosen for.
+   *
+   * Before the hover rule below, which is the same specificity and must still win.
+   */
+  .activity-tint .heat-square[data-credit='none'] {
+    background-color: color-mix(in oklab, var(--activity) 8%, var(--color-raised));
+  }
+
+  /**
    * Partial credit: progress short of the day's own goal, or a day inside a week that hit a
    * weekly goal. `lib/days.ts` decides which; both mean the same thing to a reader.
    *
@@ -262,6 +281,50 @@ html {
 
 @utility activity-rail {
   box-shadow: inset 3px 0 0 var(--activity);
+}
+
+/**
+ * The halo on a running activity's identity dot: a ring that breathes.
+ *
+ * A card says it is running with a tint and a rail, both of which are also just "this card is
+ * a bit different" until you have seen a still one beside it. Motion is the part that reads at
+ * a glance, and it is what a check-off card had no way to say at all — its timer runs with
+ * nothing on the card moving.
+ *
+ * Full strength is legal here because nothing sits on it: this is the dot, not a text surface.
+ *
+ * The **steady** declaration is the strong ring, matching the `to` keyframe rather than the
+ * `from` one: the reduced-motion rule at the foot of this file lands every animation on its
+ * final frame, so that frame has to be the one that still says "running". The 2px gap is the
+ * card's own surface, so the ring reads as a ring rather than a fatter dot.
+ *
+ * The breath is mostly the *spread*, because the dim end cannot go far: this ring carries state,
+ * so WCAG 1.4.11 wants 3:1 at every instant of the cycle, not just at its brightest. Measured
+ * over the palette against a running card's own tinted fill — worst case of the fourteen:
+ *
+ *   35%  2.16 ✗    40%  2.43 ✗    45%  2.72 ✗    50%  3.02 ✓
+ *
+ * So 50% is the floor, and it is the floor the `from` frame sits on. The bright end runs
+ * 5.0–7.1:1.
+ */
+@keyframes activity-breathe {
+  from {
+    box-shadow:
+      0 0 0 2px var(--color-surface),
+      0 0 0 7px color-mix(in oklab, var(--activity) 50%, transparent);
+  }
+  to {
+    box-shadow:
+      0 0 0 2px var(--color-surface),
+      0 0 0 4px color-mix(in oklab, var(--activity) 75%, transparent);
+  }
+}
+
+@utility activity-live {
+  box-shadow:
+    0 0 0 2px var(--color-surface),
+    0 0 0 4px color-mix(in oklab, var(--activity) 75%, transparent);
+  animation: activity-breathe 1.6s ease-in-out infinite alternate;
 }
 
 /**

@@ -128,6 +128,16 @@ type Shared = {
   onOpen: () => void
 }
 
+/**
+ * The round control in a check-off card's action slot — today's toggle, or Stop while a timer
+ * runs. One class string because the two swap places: a control that changed size or shape as
+ * the timer started would move the card's header under the thumb that started it.
+ *
+ * The "pop" is a CSS transform on press. A spring library would buy nothing a 120ms scale cannot.
+ */
+const ROUND_ACTION =
+  'focus-ring size-11 shrink-0 rounded-full transition-transform duration-100 active:scale-90'
+
 const streakLabel = (length: number, unit: 'day' | 'week') =>
   length > 0 ? `${length} ${unit} streak` : 'No streak yet'
 
@@ -162,12 +172,13 @@ function CardShell({
   activity,
   onOpen,
   summary,
-  tinted = false,
+  running = false,
   action,
   children,
 }: Shared & {
   summary: ReactNode
-  tinted?: boolean
+  /** Whether this activity's timer is running right now. Both cards say so the same way. */
+  running?: boolean
   action: ReactNode
   children?: ReactNode
 }) {
@@ -181,7 +192,7 @@ function CardShell({
           tint, a rail and a dot — never under text. See `activity-tint` in index.css. */}
       <div
         style={{ '--activity': activity.color } as CSSProperties}
-        className={`rounded-2xl p-4 ${tinted ? 'activity-tint activity-rail' : ''}`}
+        className={`rounded-2xl p-4 ${running ? 'activity-tint activity-rail' : ''}`}
       >
         <div className="flex items-start gap-3">
           {/* The title block is the affordance for the detail sheet, rather than the whole
@@ -193,7 +204,9 @@ function CardShell({
           >
             <span
               aria-hidden
-              className="flex size-8 shrink-0 items-center justify-center rounded-full text-sm"
+              className={`flex size-8 shrink-0 items-center justify-center rounded-full text-sm ${
+                running ? 'activity-live' : ''
+              }`}
               style={{ backgroundColor: activity.color }}
             >
               {activity.icon}
@@ -201,12 +214,16 @@ function CardShell({
             <span className="min-w-0">
               <span className="block truncate font-semibold text-ink transition-colors group-hover:text-accent-ink">
                 {activity.name}
+                {/* The halo is the sighted reader's cue and cannot be announced, so the state
+                    is said here instead. A timer card's own reading already says it, but this
+                    is the shell's to own — both cards say running the same way. */}
+                {running && <span className="sr-only"> — timer running</span>}
               </span>
               {/* A tinted card lifts this line a step: `ink-muted` on any tint at all is
                   under 4.5:1, and the tint is the owner's colour, so it could be white. */}
               <span
                 className={`block truncate text-xs tabular-nums ${
-                  tinted ? 'text-ink-soft' : 'text-ink-muted'
+                  running ? 'text-ink-soft' : 'text-ink-muted'
                 }`}
               >
                 {activity.archived ? 'Archived' : summary}
@@ -235,9 +252,11 @@ export function CountCard({
   thisWeek,
   streak,
   total,
+  running = false,
   compact = false,
   onToggleToday,
   onToggleDay,
+  onStop,
   ...shared
 }: Shared & {
   /** day → 1 for a logged day, from `dayAmounts`. */
@@ -247,10 +266,19 @@ export function CountCard({
   thisWeek: number
   streak: number
   total: number
+  /**
+   * Whether this activity's timer is running. A check-off card has no timer *control* in the
+   * ordinary case — that is the timer card's whole job — but any activity can be running,
+   * started from its own sheet, and a card that says nothing about it is the one place that
+   * state was invisible.
+   */
+  running?: boolean
   /** Trade the full grid for a one-row last-seven-days strip, so the card packs tighter. */
   compact?: boolean
   onToggleToday: () => void
   onToggleDay: (day: DateKey) => void
+  /** End the running timer. Only reachable while one runs — see the action below. */
+  onStop: () => void
 }) {
   const { activity } = shared
   const doneToday = (amounts.get(today) ?? 0) > 0
@@ -259,24 +287,45 @@ export function CountCard({
   return (
     <CardShell
       {...shared}
+      running={running}
       summary={goalSummary(activity, thisWeek, streak, total)}
       action={
-        <button
-          type="button"
-          onClick={onToggleToday}
-          aria-pressed={doneToday}
-          aria-label={doneToday ? `Un-log ${activity.name} for today` : `Log ${activity.name} for today`}
-          // The "pop": a CSS transform on press. A spring library would buy nothing a 120ms
-          // scale cannot.
-          className="focus-ring grid size-11 shrink-0 place-items-center rounded-full text-lg font-semibold transition-transform duration-100 active:scale-90"
-          style={{
-            backgroundColor: doneToday ? activity.color : 'transparent',
-            boxShadow: doneToday ? 'none' : `inset 0 0 0 2px ${activity.color}`,
-            color: doneToday ? 'var(--color-slate-950)' : activity.color,
-          }}
-        >
-          {doneToday ? '✓' : '+'}
-        </button>
+        // A running timer takes the slot, because it is the one thing here with something to
+        // end. Nothing is lost: the day it is running on is already checked off by the time it
+        // has tracked, so the toggle it replaces has nothing to say until the timer stops.
+        running ? (
+          // Filled in the activity's own colour, like the ✓ it stands in for, rather than the
+          // bare icon a timer card's Stop is: that one sits beside a surfaced Pause to be the
+          // quieter of two, where this is the card's only control — and the tint it now sits on
+          // is close enough to `raised` that a ghost button had nothing left to read against.
+          // Filled is also honest here: the day *is* checked off while the timer runs.
+          <button
+            type="button"
+            onClick={onStop}
+            aria-label={`Stop ${activity.name}`}
+            className={`${ROUND_ACTION} grid place-items-center`}
+            style={{ backgroundColor: activity.color, color: 'var(--color-slate-950)' }}
+          >
+            <Square className="size-4 fill-current" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onToggleToday}
+            aria-pressed={doneToday}
+            aria-label={
+              doneToday ? `Un-log ${activity.name} for today` : `Log ${activity.name} for today`
+            }
+            className={`${ROUND_ACTION} grid place-items-center text-lg font-semibold`}
+            style={{
+              backgroundColor: doneToday ? activity.color : 'transparent',
+              boxShadow: doneToday ? 'none' : `inset 0 0 0 2px ${activity.color}`,
+              color: doneToday ? 'var(--color-slate-950)' : activity.color,
+            }}
+          >
+            {doneToday ? '✓' : '+'}
+          </button>
+        )
       }
     >
       {compact ? (
@@ -344,7 +393,7 @@ export function DurationCard({
   return (
     <CardShell
       {...shared}
-      tinted={running}
+      running={running}
       summary={<TimerReading startedAt={startedAt} todayTotal={todayTotal} />}
       action={
         <>
