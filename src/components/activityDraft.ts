@@ -14,11 +14,17 @@ export type Draft = {
   description: string
   icon: string
   color: string
-  /** The goal axis: the unit the goal is in, and which axis the sheet leads with. */
+  /**
+   * The scored axis — which axis the streak, the "total" and the sheet's lead layout are about.
+   * Set by the goal shape while a goal is on; by the standalone toggle in `ActivityForm` while
+   * one is off, since the shape picker is hidden then but the axis still is not.
+   */
   measure: Measure
   /** Which card the Activities list draws. One or the other. See `Activity.display`. */
   display: DisplayMode
-  /** As typed: hours for a duration, days for a count. Always a goal — see `GOAL_SHAPES`. */
+  /** Whether this activity is scored against a target at all. On by default; see `blankDraft`. */
+  hasGoal: boolean
+  /** As typed: hours for a duration, days for a count. Meaningful only while `hasGoal`. */
   targetAmount: string
   targetPeriod: Period
 }
@@ -29,8 +35,7 @@ export type Draft = {
  * named shape with a fixed amount. Every other combination of a unit and a period is a real goal.
  *
  * The shape encodes a `(measure, period)` pair — `measure` picks the unit (days vs hours) — so
- * this list is the single source of which pairs are sayable. There is no "no goal": every
- * activity has one, defaulting to `once`.
+ * this list is the single source of which pairs are sayable while `hasGoal` is on.
  */
 export type GoalShape =
   | 'once'
@@ -79,10 +84,12 @@ export function blankDraft(color: string): Draft {
     description: '',
     icon: '💪',
     color,
-    // A new activity is a habit card, and its goal defaults to Once a day (a check-off, every
-    // day) — the `once` shape, which most habits are. Either can be changed alone.
+    // A new activity is a habit card with a goal on, defaulting to Once a day (a check-off,
+    // every day) — the `once` shape, which most habits are. Any of the three can be changed
+    // alone.
     measure: 'count',
     display: 'habit',
+    hasGoal: true,
     targetAmount: '1',
     targetPeriod: 'day',
   }
@@ -98,29 +105,28 @@ export function draftFrom(activity: {
   targetAmount?: number
   targetPeriod?: Period
 }): Draft {
+  const hasGoal = activity.targetAmount !== undefined
   return {
     name: activity.name,
     description: activity.description ?? '',
     icon: activity.icon ?? '💪',
     color: activity.color,
+    measure: activity.measure,
     display: displayMode(activity),
-    // A goal-less record predates the every-activity-has-a-goal rule; editing it adopts the
-    // default, Once a day, the same as a new activity. Otherwise show the stored goal as typed.
-    ...(activity.targetAmount === undefined
-      ? { measure: 'count' as Measure, targetAmount: '1', targetPeriod: 'day' as Period }
-      : {
-          measure: activity.measure,
-          targetAmount: String(
-            activity.measure === 'duration' ? activity.targetAmount / HOUR : activity.targetAmount,
-          ),
-          targetPeriod: activity.targetPeriod ?? 'day',
-        }),
+    hasGoal,
+    // Without a goal there is nothing stored to show; seed the fields a re-enabled goal would
+    // start from (Once a day, or its duration equivalent) rather than leave them blank.
+    targetAmount: hasGoal
+      ? String(activity.measure === 'duration' ? activity.targetAmount! / HOUR : activity.targetAmount)
+      : '1',
+    targetPeriod: hasGoal ? (activity.targetPeriod ?? 'day') : 'day',
   }
 }
 
 /** The draft as the data layer wants it, hours converted back to milliseconds. */
 export function toInput(draft: Draft, id?: string): ActivityInput {
-  const amount = draft.targetAmount.trim() === '' ? undefined : Number(draft.targetAmount)
+  const amount =
+    draft.hasGoal && draft.targetAmount.trim() !== '' ? Number(draft.targetAmount) : undefined
   return {
     id,
     name: draft.name,

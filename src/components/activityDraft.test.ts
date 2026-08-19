@@ -53,6 +53,39 @@ describe('applyGoalShape', () => {
   })
 })
 
+describe('goal on/off', () => {
+  it('is on by default for a new activity', () => {
+    expect(base.hasGoal).toBe(true)
+  })
+
+  it('drops the target when the goal is off, whatever amount was typed', () => {
+    expect(toInput({ ...base, hasGoal: false, targetAmount: '3' }).targetAmount).toBeUndefined()
+    expect(toInput({ ...base, hasGoal: false, targetAmount: '3' }).targetPeriod).toBeUndefined()
+  })
+
+  it('still carries the scored axis when the goal is off', () => {
+    expect(toInput({ ...base, hasGoal: false, measure: 'duration' }).measure).toBe('duration')
+  })
+
+  it('reads a goal-less activity as off, keeping its actual measure', () => {
+    const stored = { name: 'Commute', color: '#38bdf8', measure: 'duration' as const }
+    const draft = draftFrom(stored)
+    expect(draft.hasGoal).toBe(false)
+    expect(draft.measure).toBe('duration')
+  })
+
+  it('reads a goal-bearing activity as on', () => {
+    const stored = {
+      name: 'Read',
+      color: '#38bdf8',
+      measure: 'count' as const,
+      targetAmount: 3,
+      targetPeriod: 'week' as const,
+    }
+    expect(draftFrom(stored).hasGoal).toBe(true)
+  })
+})
+
 describe('display mode', () => {
   it('starts a new activity as a habit card', () => {
     expect(base.display).toBe('habit')
