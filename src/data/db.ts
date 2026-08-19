@@ -1,13 +1,39 @@
 import Dexie, { liveQuery, type Table } from 'dexie'
 import { setPref } from './prefs.ts'
-import type { Activity, Completion, Entry } from './types.ts'
+import {
+  displayMode,
+  type Activity,
+  type Completion,
+  type DisplayMode,
+  type Entry,
+} from './types.ts'
+
+/**
+ * An activity as version 1 stored it: a pair of independent card flags where there is now one
+ * `display`. Only the upgrade below reads this shape.
+ */
+type LegacyActivity = Activity & { showCheckoff?: boolean; showTimer?: boolean }
+
+/**
+ * The one answer a legacy flag pair was trying to give.
+ *
+ * The list only ever drew one card, so a pair that named exactly one axis is that mode; a pair
+ * that named both — the old default — never chose, and the measure is what the list actually
+ * used to pick the card.
+ */
+function legacyDisplay(activity: LegacyActivity): DisplayMode {
+  if (activity.showTimer && !activity.showCheckoff) return 'timer'
+  if (activity.showCheckoff && !activity.showTimer) return 'habit'
+  return displayMode({ measure: activity.measure })
+}
 
 /**
  * The only Dexie instance. Nothing outside `src/data/` imports it — that is what keeps
  * cloud sync a change to this directory alone.
  *
  * Every syncable field is present from version 1, including `updatedAt` and the
- * `deletedAt` tombstone, so turning on sync needs no migration.
+ * `deletedAt` tombstone, so turning on sync needs no migration. Version 2 changes no index —
+ * it only rewrites data, folding two card flags into one.
  */
 export class ActivityTrackerDB extends Dexie {
   activities!: Table<Activity, string>
@@ -28,6 +54,21 @@ export class ActivityTrackerDB extends Dexie {
       // `where('id').startsWith(`${activityId}:`)` is already a prefix scan on it.
       completions: 'id, day, updatedAt',
     })
+
+    // No index changes, so no `stores()`: this version exists to fold `showCheckoff` /
+    // `showTimer` into the single `display` the list now reads. `updatedAt` is restamped so the
+    // migrated value wins last-write-wins over a device still holding the pair.
+    this.version(2).upgrade((transaction) =>
+      transaction
+        .table<LegacyActivity, string>('activities')
+        .toCollection()
+        .modify((activity) => {
+          activity.display = legacyDisplay(activity)
+          activity.updatedAt = Date.now()
+          delete activity.showCheckoff
+          delete activity.showTimer
+        }),
+    )
   }
 }
 

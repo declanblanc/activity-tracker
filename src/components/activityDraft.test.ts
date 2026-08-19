@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GOAL_SHAPES, applyGoalShape, blankDraft, goalShapeOf } from './activityDraft.ts'
+import { GOAL_SHAPES, applyGoalShape, blankDraft, draftFrom, goalShapeOf, toInput } from './activityDraft.ts'
 
 const base = blankDraft('#38bdf8')
 
@@ -43,5 +43,30 @@ describe('applyGoalShape', () => {
     for (const shape of GOAL_SHAPES) {
       expect(goalShapeOf(applyGoalShape(base, shape.value))).toBe(shape.value)
     }
+  })
+
+  // The decoupling, pinned: the goal picks the scored axis, not the card.
+  it('leaves the display mode alone', () => {
+    for (const shape of GOAL_SHAPES) {
+      expect(applyGoalShape({ ...base, display: 'timer' }, shape.value).display).toBe('timer')
+    }
+  })
+})
+
+describe('display mode', () => {
+  it('starts a new activity as a habit card', () => {
+    expect(base.display).toBe('habit')
+  })
+
+  it('reads a stored mode, and falls back to the measure without one', () => {
+    const stored = { name: 'Read', color: '#38bdf8', measure: 'count' as const }
+
+    expect(draftFrom({ ...stored, display: 'timer' }).display).toBe('timer')
+    expect(draftFrom(stored).display).toBe('habit')
+    expect(draftFrom({ ...stored, measure: 'duration' }).display).toBe('timer')
+  })
+
+  it('carries the mode back to the data layer', () => {
+    expect(toInput({ ...base, display: 'timer' }).display).toBe('timer')
   })
 })

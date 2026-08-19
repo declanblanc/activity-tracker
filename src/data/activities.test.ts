@@ -120,46 +120,39 @@ describe('saveActivity', () => {
     expect(updated.measure).toBe('duration')
   })
 
-  it('rejects a save that hides every axis', async () => {
-    await expect(
-      saveActivity({
-        name: 'Nothing',
-        color: '#38bdf8',
-        measure: 'count',
-        showCheckoff: false,
-        showTimer: false,
-      }),
-    ).rejects.toThrow(/check-off, the timer, or both/)
-  })
-
-  it('allows a goal on an axis the card does not show', async () => {
-    // Display and goal are decoupled: a timer-only card can still be scored on the check-off.
+  it('allows a goal on the axis the card does not draw', async () => {
+    // Display and goal are decoupled: a timer card can still be scored on the check-off.
     const saved = await saveActivity({
       name: 'Reading',
       color: '#38bdf8',
       measure: 'count',
-      showCheckoff: false,
-      showTimer: true,
+      display: 'timer',
       targetAmount: 1,
       targetPeriod: 'day',
     })
 
     expect(saved.measure).toBe('count')
-    expect([saved.showCheckoff, saved.showTimer]).toEqual([false, true])
+    expect(saved.display).toBe('timer')
   })
 
-  it('stores both card-display flags independently of the measure', async () => {
+  it('keeps the display mode when an update says nothing about it', async () => {
     const gym = await saveActivity({
       name: 'Gym',
       color: '#38bdf8',
       measure: 'count',
-      showCheckoff: true,
-      showTimer: true,
+      display: 'timer',
     })
-    expect([gym.showCheckoff, gym.showTimer]).toEqual([true, true])
 
-    const off = await saveActivity({ ...gym, showTimer: false })
-    expect([off.showCheckoff, off.showTimer]).toEqual([true, false])
+    const renamed = await saveActivity({ ...gym, display: undefined, name: 'Gym & sauna' })
+
+    expect(renamed.display).toBe('timer')
+  })
+
+  it('takes the measure’s card when a new activity names no display mode', async () => {
+    const timed = await saveActivity({ name: 'Focus', color: '#38bdf8', measure: 'duration' })
+    const counted = await saveActivity({ name: 'Floss', color: '#38bdf8', measure: 'count' })
+
+    expect([timed.display, counted.display]).toEqual(['timer', 'habit'])
   })
 
   it('validates a target against the submitted measure, which can now change', async () => {

@@ -35,8 +35,8 @@ export type Period = 'day' | 'week' | 'month'
 /**
  * Which axis an activity is *scored* on — the one the single goal, the streak, the "total" and
  * the sheet's lead layout are about. Not what it stores (every activity can store both
- * `Completion` rows and `Entry` intervals) and not what its card shows (`showCheckoff` /
- * `showTimer` decide that, independently of this).
+ * `Completion` rows and `Entry` intervals) and not what its card shows (`display` decides
+ * that, independently of this).
  *
  * - `count` scores the check-off, and its goal counts **days**.
  * - `duration` scores the timer, and its goal counts **milliseconds**.
@@ -46,6 +46,16 @@ export type Period = 'day' | 'week' | 'month'
  * shapes no stored record, so flipping it is safe (it clears a goal whose unit no longer applies).
  */
 export type Measure = 'count' | 'duration'
+
+/**
+ * Which card an activity gets on the Activities list, and nothing else.
+ *
+ * One choice, not two flags: the list draws one card per activity, so "both" was never a state it
+ * could honour. `habit` draws the check-off heat map, `timer` the start/stop reading. Independent
+ * of `measure` — a timer card can be scored on the check-off, and its own sheet shows both axes
+ * whichever mode this is.
+ */
+export type DisplayMode = 'habit' | 'timer'
 
 export type Activity = {
   id: string
@@ -68,18 +78,16 @@ export type Activity = {
   targetAmount?: number
   targetPeriod?: Period
   /**
-   * Which axes this activity's *card* shows on the activity list: the check-off grid, the timer,
-   * or both. Display only, and only for the card — every activity can record both (the storage
-   * layer never guarded it), and its own sheet always shows both regardless of these. Both
-   * default on for a new activity; turning one off just hides that axis from the card. Decoupled
-   * from `measure`: the goal may be scored on an axis the card does not show.
+   * Which card this activity gets on the Activities list. Display only — every activity can
+   * record both check-offs and intervals (the storage layer never guarded it), and its own sheet
+   * always shows both regardless of this. Decoupled from `measure`: the goal may be scored on the
+   * axis the card does not draw.
    *
-   * Optional so no stored record needs a migration: when absent, `tracksCompletion` /
-   * `tracksTime` fall back to `measure`, so an activity from before this existed shows exactly
-   * the single card axis it always did until it is next edited. See those helpers below.
+   * Optional only so a blob exported before the field existed imports unchanged; `displayMode`
+   * falls back to `measure` for such a record. Every stored record has one — the v2 upgrade in
+   * `db.ts` gave the legacy `showCheckoff` / `showTimer` pair its single answer.
    */
-  showCheckoff?: boolean
-  showTimer?: boolean
+  display?: DisplayMode
   archived: boolean
   sortOrder: number
   createdAt: number
@@ -104,9 +112,8 @@ export type ActivityInput = {
   measure: Measure
   targetAmount?: number
   targetPeriod?: Period
-  /** Which axes the card shows. See `Activity.showCheckoff`. */
-  showCheckoff?: boolean
-  showTimer?: boolean
+  /** Which card the Activities list draws. See `Activity.display`. */
+  display?: DisplayMode
   archived?: boolean
 }
 
@@ -180,17 +187,11 @@ export const isOpen = (entry: Entry) => entry.endedAt === OPEN_ENTRY_END
 export const isLive = (record: { deletedAt: number }) => record.deletedAt === NOT_DELETED
 
 /**
- * Whether the activity's card shows the timer axis.
+ * Which card the Activities list draws for this activity.
  *
- * Not "can hold time" — every activity can, and its sheet always shows the timer. This is the
- * one definition the dashboard, Today and Insights filter their *display* on, so they never
- * drift into disagreeing. Falls back to `measure` when `showTimer` is unset, so a record from
- * before the flags existed shows what it always did. See `Activity.showTimer`.
+ * Not "can hold time" or "can be checked off" — every activity can do both, which is why nothing
+ * outside that one list reads this. Falls back to `measure` for a record imported from before the
+ * field existed. See `Activity.display`.
  */
-export const tracksTime = (activity: Pick<Activity, 'measure' | 'showTimer'>): boolean =>
-  activity.showTimer ?? activity.measure === 'duration'
-
-/** Whether the activity's card shows the check-off axis. Falls back to `measure`. See `tracksTime`. */
-export const tracksCompletion = (
-  activity: Pick<Activity, 'measure' | 'showCheckoff'>,
-): boolean => activity.showCheckoff ?? activity.measure === 'count'
+export const displayMode = (activity: Pick<Activity, 'measure' | 'display'>): DisplayMode =>
+  activity.display ?? (activity.measure === 'duration' ? 'timer' : 'habit')

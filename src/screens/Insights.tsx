@@ -24,8 +24,6 @@ import { getCompletions } from '../data/completions.ts'
 import { getEntriesInRange, getOpenEntries } from '../data/entries.ts'
 import { getPref, setPref } from '../data/prefs.ts'
 import {
-  tracksCompletion,
-  tracksTime,
   type Activity,
   type Measure,
   type Period,
@@ -124,7 +122,9 @@ export default function Insights() {
     return periodAmounts(dayAmounts(activity, entries, completions, days, now), windows)
   }
 
-  const anyTimed = activities.some((activity) => tracksTime(activity) && !activity.archived)
+  // These panels are about tracked wall-clock, so the records answer this, not any display
+  // choice: every activity may hold intervals whatever card the Activities list gives it.
+  const anyTimed = entries.length > 0
   const byPeriod = bucketTotals(entries, trend, now)
   // The trend's last bucket *is* the viewed period, so the comparison against the one
   // before it comes free.
@@ -158,13 +158,13 @@ export default function Insights() {
         {/* Retroactive logging lives here because this is the screen where a gap is seen —
             a goal short by an hour is the hour you forgot to start.
 
-            Only for activities that track time — a plain check-off has no interval to write,
-            and its equivalent gesture is ticking a past square on the year grid below.
+            Offered for every activity: any of them can hold an interval, whichever card it
+            shows on the Activities list.
 
             Icon-only: this header already carries a name and a way out of it, and the word
             "Add" cost enough width to truncate the activity's name to six characters on a
             phone. */}
-        {focus && tracksTime(focus) && (
+        {focus && (
           <IconButton
             label="Add an entry"
             variant="primary"
@@ -244,8 +244,7 @@ export default function Insights() {
         <EntryForm
           className="panel mt-4 p-4"
           draft={draft}
-          // Only an activity that tracks time can hold an interval, so only they are offered.
-          activities={activities.filter(tracksTime)}
+          activities={activities}
           onChange={setDraft}
           onClose={() => setDraft(null)}
         />
@@ -314,11 +313,11 @@ export default function Insights() {
             now={now}
           />
 
-          {/* Anything checked off — see `HeatGrid`. For a plain check-off it replaces the
-              retroactive `+` a timer gets instead; a hybrid gets both. The squares come from the
-              check-offs directly, since for a hybrid timer `dayAmounts` is milliseconds. A weekly
-              target shades the columns only when it is measured in days. */}
-          {focus && tracksCompletion(focus) && (
+          {/* Anything checked off — see `HeatGrid`. Every activity can be, so this shows for any
+              focused one. The squares come from the check-offs directly, since for a time-scored
+              activity `dayAmounts` is milliseconds. A weekly target shades the columns only when
+              it is measured in days. */}
+          {focus && (
             <div className="panel mt-4 p-4">
               <h2 className="text-2xs font-semibold tracking-widest text-ink-muted uppercase">
                 {focus.measure === 'count' ? 'Past year' : 'Checked off'}

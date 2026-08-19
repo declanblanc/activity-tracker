@@ -18,22 +18,25 @@ These are the ones that look wrong until you know why. All are settled decisions
   do is compute two different numbers. The other exceptions are `formatAmount` (the last step
   before rendering, which has to put a unit on a bare number) and `FocusSummary` (the two measures
   genuinely have different things to say).
-- **Every activity holds both axes; the sheet always shows both; the flags are the card's alone.**
+- **Every activity holds both axes; the sheet always shows both; `display` is the card's alone.**
   Storage never cared — completions and entries were always both allowed on any activity. So the
   activity sheet renders both the check-off grid and the timer for *every* activity, unconditionally;
-  it is the full view and branches on nothing. `showCheckoff` / `showTimer` decide only what the
-  card on the Activities list shows — both default on, turning one off just hides that axis from the
-  card. `measure` is a separate thing: the *scored* axis — the one the single goal, the streak and
-  the "total" are about, and the axis the sheet leads its layout with. The two are **decoupled**: a
-  card can show only the timer while the goal is scored on the check-off. `measure` never reaches
-  `lib/`: `dayAmounts` still branches on it alone, so the one-amount-per-day core and the
-  streak/goals stay axis-agnostic. A time-scored activity's check-off grid reads `completionAmounts`
-  directly, because its `dayAmounts` is milliseconds. A *second* scored series (two goals) is the
-  thing deliberately *not* built: it would force `dayAmounts` to compute two numbers and undo the
-  whole measure-agnostic downstream. The flags are optional; absent, `tracksTime` /
-  `tracksCompletion` (in `data/types.ts`) fall back to `measure`, so a record from before they
-  existed shows the single card axis it always did. The dashboard, Today and Insights filter their
-  *display* on those helpers, never on a bare `measure ===`, so they cannot drift into disagreeing.
+  it is the full view and branches on nothing. `display` (`'habit' | 'timer'`) decides one thing
+  only: which card the Activities list draws. **One choice, not two flags** — that list draws one
+  card per activity, so the pair of booleans this replaced had a "both" state it could not honour,
+  and in practice nothing read them: the list split on `measure`, so a card asked for as a timer
+  came out a heat map. Nothing outside that one screen reads `display`; Today and Insights ask the
+  records instead, since any activity may hold intervals. `measure` is a separate thing: the
+  *scored* axis — the one the single goal, the streak and the "total" are about, and the axis the
+  sheet leads its layout with. The two are **decoupled**: a card can be a timer while the goal is
+  scored on the check-off, which is why a habit card draws `gridAmounts` (the check-offs) rather
+  than the scored amounts. `measure` never reaches `lib/`: `dayAmounts` still branches on it alone,
+  so the one-amount-per-day core and the streak/goals stay axis-agnostic. A *second* scored series
+  (two goals) is the thing deliberately *not* built: it would force `dayAmounts` to compute two
+  numbers and undo the whole measure-agnostic downstream. `display` is optional on the type only so
+  a blob exported before it existed imports unchanged — `displayMode` in `data/types.ts` reads
+  `measure` for such a record; every stored record has one, since the Dexie v2 upgrade folded the
+  old flag pair into it.
 - **`HeatGrid` is for check-off activities only**, and takes a colour and a weekly target rather
   than an `Activity` so there is nothing in it to branch on. A contribution square is on or off,
   which throws away the quantity that is the whole point of a timed activity. Timed history lives
@@ -106,10 +109,20 @@ These are the ones that look wrong until you know why. All are settled decisions
   intervals), so the measure is only a scoring choice. The one consequence is the goal: a days
   target cannot be read as an hours one, so moving the measure across axes clears it. The form does
   that. The measure is **not** tied to what the card shows — the goal can be scored on an axis the
-  card hides — so `saveActivity` enforces only that at least one axis is shown, not that the scored
-  one is.
+  card hides — so `saveActivity` does not check the two against each other at all.
+- **A running timer looks the same on both cards, and `CardShell` owns it.** Tint, rail and the
+  breathing halo on the identity dot are one `running` prop, so a habit card says it too — any
+  activity's timer can be started from its sheet, and the habit card is the one with no control to
+  say so. The halo's dim end is floored at 50% of the activity colour: it carries state, so it owes
+  3:1 at *every* frame, not just its brightest. Its resting declaration is the bright frame on
+  purpose — the global `prefers-reduced-motion` rule lands an animation on its final frame, so that
+  frame has to be the one that still reads as running.
 - **`activity-tint` never shares an element with `panel`.** The tint sets `background-color`, so
   it replaces the panel's fill instead of sitting on it. A card is two nested elements for this.
+  A tinted card also re-tints its **empty** heat squares by the same 8%: the square is opaque
+  `raised`, so when the tint moved the fill under it the step between them collapsed to 1.00:1 —
+  identical luminance, and the grid disappeared under a running timer. Tinting the square's own
+  base restores the untinted 1.18:1.
 - **Deleting an activity is a labelled button in its sheet, and only that.** There was a
   swipe-to-delete on the card; it read `pointercancel` as a completed swipe, and since a touch
   that turns into a vertical scroll cancels the pointer, scrolling the dashboard deleted

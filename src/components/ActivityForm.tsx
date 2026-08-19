@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react'
+import type { DisplayMode } from '../data/types.ts'
 import { ICONS, PALETTE } from '../lib/palette.ts'
 import { GOAL_SHAPES, applyGoalShape, goalShapeOf, type Draft, type GoalShape } from './activityDraft.ts'
 import Button from './ui/Button.tsx'
@@ -14,7 +15,7 @@ const FIELD = 'mt-1 w-full rounded-lg bg-raised px-3 py-2 text-ink focus-ring'
 const MAX_DAYS: Record<'week' | 'month', number> = { week: 7, month: 31 }
 
 /**
- * One form for creating and editing, and for any mix of the two axes.
+ * One form for creating and editing, in either display mode.
  *
  * In a dialog rather than inline under a row: it is longer than either form it replaces, and the
  * dialog is also the scroll container, so a tall form on a short screen produces one scrollbar
@@ -39,19 +40,6 @@ export default function ActivityForm({
   const shape = goalShapeOf(draft)
   const onceADay = shape === 'once'
 
-  /**
-   * Turn a card axis on or off. Display only — which axes the activity's card shows on the list.
-   * The goal and the sheet are untouched by this. The one invariant the save path also enforces:
-   * at least one axis stays on, so the last one on is locked.
-   */
-  const setAxis = (axis: 'checkoff' | 'timer', on: boolean) =>
-    setDraft((current) => {
-      const showCheckoff = axis === 'checkoff' ? on : current.showCheckoff
-      const showTimer = axis === 'timer' ? on : current.showTimer
-      if (!showCheckoff && !showTimer) return current
-      return { ...current, showCheckoff, showTimer }
-    })
-
   return (
     <form
       className="w-[min(26rem,calc(100vw-2rem))] rounded-2xl bg-surface p-5 shadow-xl"
@@ -61,29 +49,28 @@ export default function ActivityForm({
         onSubmit({ ...draft, name: draft.name.trim(), description: draft.description.trim() })
       }}
     >
-      {/* Display only: which axes the card on the activity list shows. The activity's own page
-          always shows both, and the goal below is independent of this. Both default on; the last
-          one on cannot be turned off. */}
+      {/* Display only: which card this activity gets on the Activities list. Radios rather than
+          checkboxes because the list draws one card — there is no "both" for it to draw. The
+          activity's own page shows both axes either way, and the goal below is independent. */}
       <fieldset>
-        <legend className="text-sm font-medium text-ink">Show on the activity list</legend>
+        <legend className="text-sm font-medium text-ink">Display mode</legend>
         <p className="mt-0.5 text-xs text-ink-muted">
-          Its own page always shows both — this is just the card.
+          How the card looks on the Activities list. Its own page always shows both.
         </p>
         <div className="mt-2 flex flex-col gap-2">
-          <AxisToggle
-            label="Heat map"
+          <ModeOption
+            label="Habit"
             hint="A filled square for each day you check it off."
-            checked={draft.showCheckoff}
-            // Off would leave nothing on, so the sole remaining axis is locked.
-            locked={draft.showCheckoff && !draft.showTimer}
-            onChange={(on) => setAxis('checkoff', on)}
+            mode="habit"
+            selected={draft.display}
+            onSelect={(mode) => set('display', mode)}
           />
-          <AxisToggle
+          <ModeOption
             label="Timer"
             hint="Start and stop a timer, with a running total."
-            checked={draft.showTimer}
-            locked={draft.showTimer && !draft.showCheckoff}
-            onChange={(on) => setAxis('timer', on)}
+            mode="timer"
+            selected={draft.display}
+            onSelect={(mode) => set('display', mode)}
           />
         </div>
       </fieldset>
@@ -210,31 +197,29 @@ export default function ActivityForm({
   )
 }
 
-/**
- * One axis, as a checkbox with a hint. `locked` is the sole-remaining-axis case: it stays checked
- * and disabled, because turning it off would leave the activity tracking nothing.
- */
-function AxisToggle({
+/** One display mode, as a radio with a hint. */
+function ModeOption({
   label,
   hint,
-  checked,
-  locked,
-  onChange,
+  mode,
+  selected,
+  onSelect,
 }: {
   label: string
   hint: ReactNode
-  checked: boolean
-  locked: boolean
-  onChange: (on: boolean) => void
+  mode: DisplayMode
+  selected: DisplayMode
+  onSelect: (mode: DisplayMode) => void
 }) {
   return (
-    <label className={`flex items-start gap-3 ${locked ? 'opacity-70' : ''}`}>
+    <label className="flex items-start gap-3">
       <input
-        type="checkbox"
-        checked={checked}
-        disabled={locked}
-        onChange={(event) => onChange(event.target.checked)}
-        className="focus-ring mt-0.5 size-5 shrink-0 rounded accent-accent"
+        type="radio"
+        name="display-mode"
+        value={mode}
+        checked={selected === mode}
+        onChange={() => onSelect(mode)}
+        className="focus-ring mt-0.5 size-5 shrink-0 accent-accent"
       />
       <span className="min-w-0">
         <span className="block text-sm font-medium text-ink">{label}</span>

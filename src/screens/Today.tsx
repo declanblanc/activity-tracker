@@ -9,7 +9,7 @@ import EmptyState from '../components/ui/EmptyState.tsx'
 import { Modal } from '../components/ui/Modal.tsx'
 import { getActivities } from '../data/activities.ts'
 import { getEntriesInRange } from '../data/entries.ts'
-import { isOpen, tracksTime, type Activity, type Entry } from '../data/types.ts'
+import { isOpen, type Activity, type Entry } from '../data/types.ts'
 import { perActivityTotals } from '../lib/accounting/totals.ts'
 import { formatDuration, formatTime } from '../lib/format.ts'
 import { assignLanes, laneSpans } from '../lib/lanes.ts'
@@ -69,10 +69,6 @@ export default function Today() {
 
   if (!entries || !activities) return null
 
-  // Entries belong to activities that track time — timers and hybrid check-offs — so this screen
-  // is about them. A plain check-off has no interval to draw; its history is the Activities grid.
-  const timed = activities.filter(tracksTime)
-
   const byId = new Map(activities.map((activity) => [activity.id, activity]))
   // Clip first, then pack: two entries that overlap only outside today must not be pushed into
   // separate lanes for an overlap the screen never shows.
@@ -95,9 +91,10 @@ export default function Today() {
     setDraft({ ...blankDraft(now), start: toDateTimeInput(start), end: toDateTimeInput(start + HOUR) })
   }
 
-  // Nothing timed at all is the one state with no timeline worth drawing: there is nothing to show
-  // and nothing that could be added, since an entry needs a timed activity to belong to.
-  if (timed.length === 0) {
+  // No activities at all is the one state with no timeline worth drawing: there is nothing to
+  // show and nothing that could be added, since an entry needs an activity to belong to. Every
+  // activity can hold one, whichever card it shows on the Activities list.
+  if (activities.length === 0) {
     return (
       <Screen now={now}>
         <EmptyState
@@ -111,8 +108,8 @@ export default function Today() {
             </Link>
           }
         >
-          The timeline draws timed stretches. None of your activities are timed — the ones you check
-          off show their history on the Activities grid.
+          The timeline draws the stretches you time. Add an activity and its entries show up
+          here.
         </EmptyState>
       </Screen>
     )
@@ -186,7 +183,7 @@ export default function Today() {
         {draft && (
           <EntrySheet
             draft={draft}
-            activities={timed}
+            activities={activities}
             onChange={setDraft}
             onClose={() => setDraft(null)}
           />

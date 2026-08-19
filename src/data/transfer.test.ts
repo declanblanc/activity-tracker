@@ -131,19 +131,18 @@ describe('exportJson', () => {
     expect(await db.activities.toArray()).toEqual([activity()])
   })
 
-  it('round-trips the show flags, and imports a file that predates them', async () => {
-    await db.activities.add(activity({ showCheckoff: true, showTimer: true }))
+  it('round-trips the display mode, and imports a file that predates it', async () => {
+    await db.activities.add(activity({ display: 'timer' }))
     const backup = await exportJson()
     await db.activities.clear()
     await importJson(backup)
-    const restored = await db.activities.get('activity-1')
-    expect([restored?.showCheckoff, restored?.showTimer]).toEqual([true, true])
+    expect((await db.activities.get('activity-1'))?.display).toBe('timer')
 
-    // A file written before the flags existed carries neither, and must still import.
+    // A file written before the field existed carries none, and must still import — `displayMode`
+    // reads the measure for such a record.
     await db.activities.clear()
     await importJson(file())
-    const old = await db.activities.get('activity-1')
-    expect([old?.showCheckoff, old?.showTimer]).toEqual([undefined, undefined])
+    expect((await db.activities.get('activity-1'))?.display).toBeUndefined()
   })
 })
 

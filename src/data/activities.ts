@@ -1,6 +1,13 @@
 import { db } from './db.ts'
 import { stopActivity } from './entries.ts'
-import { NOT_DELETED, newId, type Activity, type ActivityInput, type Period } from './types.ts'
+import {
+  NOT_DELETED,
+  displayMode,
+  newId,
+  type Activity,
+  type ActivityInput,
+  type Period,
+} from './types.ts'
 
 /**
  * Activity CRUD. Like every module here it stamps `updatedAt` on each write and
@@ -56,16 +63,11 @@ export async function saveActivity(input: ActivityInput): Promise<Activity> {
   // clears the goal when it moves across measures, since a days target cannot be read as hours.
   const measure = input.measure
 
-  // Which axes the *card* shows on the activity list. Display only: the sheet shows both axes
-  // for every activity, and the goal above is decoupled from these. Absent falls back to the
-  // measure, so a record from before the flags existed shows the single axis it always did.
-  const showCheckoff = input.showCheckoff ?? existing?.showCheckoff
-  const showTimer = input.showTimer ?? existing?.showTimer
-  const showsCheckoff = showCheckoff ?? measure === 'count'
-  const showsTimer = showTimer ?? measure === 'duration'
-  if (!showsCheckoff && !showsTimer) {
-    throw new Error('An activity must show the check-off, the timer, or both.')
-  }
+  // Which card the activity list draws. Display only: the sheet shows both axes for every
+  // activity, and the goal above is decoupled from this. One choice, so there is nothing to
+  // validate — an update that says nothing keeps what is stored, and an insert that says nothing
+  // takes the measure's card.
+  const display = input.display ?? existing?.display ?? displayMode({ measure })
 
   if (input.targetAmount !== undefined) {
     // Negated rather than `<= 0` so a NaN from a half-typed form field is rejected too.
@@ -89,8 +91,7 @@ export async function saveActivity(input: ActivityInput): Promise<Activity> {
     color: input.color,
     icon: input.icon?.trim() || undefined,
     measure,
-    showCheckoff,
-    showTimer,
+    display,
     targetAmount: input.targetAmount,
     targetPeriod: input.targetPeriod,
     archived: input.archived ?? false,

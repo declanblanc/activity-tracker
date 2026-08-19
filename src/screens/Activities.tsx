@@ -44,12 +44,12 @@ import {
 import { getPref, setActivityStamp, setPref } from '../data/prefs.ts'
 import {
   OPEN_ENTRY_END,
+  displayMode,
   type Activity,
   type Completion,
   type DateKey,
   type Entry,
   type Period,
-  tracksTime,
 } from '../data/types.ts'
 import { streaks, targetAt } from '../lib/accounting/goals.ts'
 import { periodTotals, totalSince, type PeriodTotals } from '../lib/accounting/totals.ts'
@@ -145,9 +145,10 @@ export default function Activities() {
 
   const visible = showArchived ? activities : activities.filter((activity) => !activity.archived)
   const archivedCount = activities.filter((activity) => activity.archived).length
-  // Archived ones count: an activity archived at noon still tracked the morning, and the day's
-  // coverage has to account for it. A hybrid check-off tracks time too, so it counts here.
-  const anyTimed = activities.some(tracksTime)
+  // Whether the day has any coverage to summarise, asked of the records rather than of any flag:
+  // every activity may hold intervals, whatever card it shows. Archived ones count — an activity
+  // archived at noon still tracked the morning.
+  const anyTimed = entries.length > 0
 
   const startedAtByActivity = new Map(
     openEntries.map((entry) => [entry.activityId, entry.startedAt]),
@@ -273,18 +274,18 @@ export default function Activities() {
   const openActivity = activities.find((activity) => activity.id === openId)
   const openIndex = visible.findIndex((activity) => activity.id === openId)
 
-  // Two zones, timers above check-offs. The split is the whole gap fix: a timed card has no heat
-  // strip and a check-off card does, so mixing them in one grid left every short card with dead
-  // space beneath it. Grouped, each zone holds one card height and packs flush. The lead
-  // `measure` picks the card, exactly as the single grid did.
-  const timers = visible.filter((activity) => activity.measure === 'duration')
-  const checkoffs = visible.filter((activity) => activity.measure === 'count')
+  // Two zones, timers above habits. The split is the whole gap fix: a timer card has no heat
+  // strip and a habit card does, so mixing them in one grid left every short card with dead
+  // space beneath it. Grouped, each zone holds one card height and packs flush. `display` picks
+  // the zone and the card alike — it is the one thing that says which card this activity gets.
+  const timers = visible.filter((activity) => displayMode(activity) === 'timer')
+  const checkoffs = visible.filter((activity) => displayMode(activity) === 'habit')
   const bothZones = timers.length > 0 && checkoffs.length > 0
   // Never leave a card stuck as a drag handle: if the list shrinks to one while editing, the
   // Reorder toggle is gone, so reorder mode has to switch itself off or that card is uninteractable.
   const reordering = editing && visible.length > 1
 
-  /** One card, chosen by the activity's lead measure. */
+  /** One card, chosen by the activity's display mode. */
   const renderCard = (activity: Activity): ReactNode => {
     const stats = summarise(activity)
     const startedAt = startedAtByActivity.get(activity.id)
@@ -293,10 +294,12 @@ export default function Activities() {
     const blockStart = blockStartedAt[activity.id] ?? startedAt
     const shared = { activity, onOpen: () => setOpenId(activity.id) }
 
-    return activity.measure === 'count' ? (
+    return displayMode(activity) === 'habit' ? (
       <CountCard
         {...shared}
-        amounts={stats.amounts}
+        // The check-offs, not the scored amounts: a habit card whose goal is scored on time would
+        // otherwise fill its squares from milliseconds. Same series the sheet's grid draws.
+        amounts={stats.gridAmounts}
         today={today}
         compact={compact}
         onToggleDay={(dayKey) => void toggleCompletion(activity.id, dayKey)}

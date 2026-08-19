@@ -293,7 +293,10 @@ export function CountCard({
             amounts={amounts}
             today={today}
             weeks={weeks}
-            weeklyTarget={targetAt(activity, 'week') ?? undefined}
+            // Days only: a duration target is milliseconds, which no column of squares can score.
+            weeklyTarget={
+              activity.measure === 'count' ? (targetAt(activity, 'week') ?? undefined) : undefined
+            }
             onDayActivate={activity.archived ? undefined : onToggleDay}
           />
         </div>

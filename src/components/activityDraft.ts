@@ -4,7 +4,8 @@
  * Separate from `ActivityForm` so a screen can build a draft without importing a component — and
  * so the form file exports only a component, which is what keeps fast refresh working.
  */
-import type { ActivityInput, Measure, Period } from '../data/types.ts'
+import { displayMode } from '../data/types.ts'
+import type { ActivityInput, DisplayMode, Measure, Period } from '../data/types.ts'
 
 const HOUR = 60 * 60 * 1000
 
@@ -15,9 +16,8 @@ export type Draft = {
   color: string
   /** The goal axis: the unit the goal is in, and which axis the sheet leads with. */
   measure: Measure
-  /** Which axes the card shows. At least one is always on. See `Activity.showCheckoff`. */
-  showCheckoff: boolean
-  showTimer: boolean
+  /** Which card the Activities list draws. One or the other. See `Activity.display`. */
+  display: DisplayMode
   /** As typed: hours for a duration, days for a count. Always a goal — see `GOAL_SHAPES`. */
   targetAmount: string
   targetPeriod: Period
@@ -79,11 +79,10 @@ export function blankDraft(color: string): Draft {
     description: '',
     icon: '💪',
     color,
-    // A new activity's card shows both axes; either can be turned off later. Its goal defaults to
-    // Once a day (a check-off, every day) — the `once` shape, which most habits are.
+    // A new activity is a habit card, and its goal defaults to Once a day (a check-off, every
+    // day) — the `once` shape, which most habits are. Either can be changed alone.
     measure: 'count',
-    showCheckoff: true,
-    showTimer: true,
+    display: 'habit',
     targetAmount: '1',
     targetPeriod: 'day',
   }
@@ -95,8 +94,7 @@ export function draftFrom(activity: {
   icon?: string
   color: string
   measure: Measure
-  showCheckoff?: boolean
-  showTimer?: boolean
+  display?: DisplayMode
   targetAmount?: number
   targetPeriod?: Period
 }): Draft {
@@ -105,10 +103,7 @@ export function draftFrom(activity: {
     description: activity.description ?? '',
     icon: activity.icon ?? '💪',
     color: activity.color,
-    // Fall back to the measure for a record from before the flags existed, so editing an old
-    // activity shows exactly the single card axis it already had, with the other off.
-    showCheckoff: activity.showCheckoff ?? activity.measure === 'count',
-    showTimer: activity.showTimer ?? activity.measure === 'duration',
+    display: displayMode(activity),
     // A goal-less record predates the every-activity-has-a-goal rule; editing it adopts the
     // default, Once a day, the same as a new activity. Otherwise show the stored goal as typed.
     ...(activity.targetAmount === undefined
@@ -133,8 +128,7 @@ export function toInput(draft: Draft, id?: string): ActivityInput {
     icon: draft.icon,
     color: draft.color,
     measure: draft.measure,
-    showCheckoff: draft.showCheckoff,
-    showTimer: draft.showTimer,
+    display: draft.display,
     targetAmount:
       amount === undefined ? undefined : draft.measure === 'duration' ? amount * HOUR : amount,
     targetPeriod: amount === undefined ? undefined : draft.targetPeriod,

@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
+import Dexie from 'dexie'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { db, deleteAllData, latestLocalChange } from './db.ts'
+import { ActivityTrackerDB, db, deleteAllData, latestLocalChange } from './db.ts'
 import { getPref, setPref } from './prefs.ts'
 import { NOT_DELETED, OPEN_ENTRY_END } from './types.ts'
 
@@ -74,4 +75,48 @@ it('reports the newest updatedAt across all three tables', async () => {
   await db.completions.put(completion(20))
 
   expect(await latestLocalChange()).toBe(30)
+})
+
+// The version 1 schema, so the upgrade below runs against a database shaped the way a device that
+// has not opened this build still holds — a pair of card flags where there is now one `display`.
+const V1_STORES = {
+  activities: 'id, sortOrder, updatedAt, deletedAt',
+  entries: 'id, activityId, startedAt, endedAt, [activityId+endedAt], updatedAt, deletedAt',
+  completions: 'id, day, updatedAt',
+}
+
+it('folds the legacy card flags into one display mode', async () => {
+  const name = 'legacy-flags'
+  const legacy = new Dexie(name)
+  legacy.version(1).stores(V1_STORES)
+  await legacy.table('activities').bulkPut([
+    // Only one axis on: that axis is the mode, whatever the goal is scored on.
+    { ...activity(1), id: 'timer-only', showCheckoff: false, showTimer: true },
+    { ...activity(1), id: 'checkoff-only', measure: 'duration', showCheckoff: true, showTimer: false },
+    // Both on — the old default — never chose, so the measure picks the card, exactly as the list
+    // used to. Same for a record older than the flags.
+    { ...activity(1), id: 'both', showCheckoff: true, showTimer: true },
+    { ...activity(1), id: 'both-timed', measure: 'duration', showCheckoff: true, showTimer: true },
+    { ...activity(1), id: 'neither', measure: 'duration' },
+  ])
+  legacy.close()
+
+  const upgraded = new ActivityTrackerDB(name)
+  const rows = await upgraded.activities.orderBy('id').toArray()
+  upgraded.close()
+
+  expect(rows.map((row) => [row.id, row.display])).toEqual([
+    ['both', 'habit'],
+    ['both-timed', 'timer'],
+    ['checkoff-only', 'habit'],
+    ['neither', 'timer'],
+    ['timer-only', 'timer'],
+  ])
+  // The flags are gone, and each row is restamped so the migrated answer wins last-write-wins
+  // against a device still holding the pair.
+  for (const row of rows) {
+    expect(row).not.toHaveProperty('showCheckoff')
+    expect(row).not.toHaveProperty('showTimer')
+    expect(row.updatedAt).toBeGreaterThan(1)
+  }
 })

@@ -21,6 +21,7 @@ import {
   isLive,
   type Activity,
   type Completion,
+  type DisplayMode,
   type Entry,
   type Measure,
   type Period,
@@ -395,6 +396,7 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 
 const PERIODS: Period[] = ['day', 'week', 'month']
 const MEASURES: Measure[] = ['count', 'duration']
+const DISPLAY_MODES: DisplayMode[] = ['habit', 'timer']
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 function validateActivity(value: unknown, index: number): void {
@@ -408,12 +410,13 @@ function validateActivity(value: unknown, index: number): void {
   if (!isNonEmptyString(activity.name)) reject('has no name')
   if (!isNonEmptyString(activity.color)) reject('has no color')
   if (!MEASURES.includes(activity.measure as Measure)) reject('has no measure')
-  // Optional, so a file written before these existed imports unchanged; only a present
-  // non-boolean is a corrupt field.
-  for (const flag of ['showCheckoff', 'showTimer'] as const) {
-    if (activity[flag] !== undefined && typeof activity[flag] !== 'boolean') {
-      reject(`has an unreadable ${flag} flag`)
-    }
+  // Optional, so a file written before the field existed imports unchanged — `displayMode` reads
+  // the measure for such a record. Only a present unknown value is corrupt.
+  if (
+    activity.display !== undefined &&
+    !DISPLAY_MODES.includes(activity.display as DisplayMode)
+  ) {
+    reject('has an unknown display mode')
   }
   if (typeof activity.archived !== 'boolean') reject('has no archived flag')
   if (!Number.isFinite(activity.sortOrder)) reject('has no sort order')
