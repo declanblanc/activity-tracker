@@ -4,3 +4,4 @@ dev-dist/
 coverage/
 .wrangler/
 .DS_Store
+.lavish/
