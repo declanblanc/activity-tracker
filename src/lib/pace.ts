@@ -85,3 +85,23 @@ export function onPace({ soFar, daysClosed, daysTotal }: Pace, target: number): 
   if (daysTotal === 0) return true
   return soFar >= target * (daysClosed / daysTotal)
 }
+
+/**
+ * Each window summed over its own first `days` days.
+ *
+ * The series a period still running can honestly be ranked against. "Ahead of 0 of 11 weeks"
+ * for a Tuesday is the part-against-whole mistake wearing a different hat: two days of this
+ * week were being placed among eleven finished ones. Cutting every one of them to the same two
+ * days makes the comparison mean what it claims to.
+ */
+export function leadingTotals(
+  amounts: Map<DateKey, number>,
+  windows: TimeWindow[],
+  days: number,
+): number[] {
+  return windows.map((window) =>
+    dayWindowsIn(window)
+      .slice(0, days)
+      .reduce((total, day) => total + (amounts.get(dateKey(day.start)) ?? 0), 0),
+  )
+}

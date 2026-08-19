@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DateKey } from '../data/types.ts'
-import { onPace, pace } from './pace.ts'
+import { leadingTotals, onPace, pace } from './pace.ts'
 import { periodWindow, trailingWindows } from './time.ts'
 
 const HOUR = 60 * 60 * 1000
@@ -124,5 +124,32 @@ describe('onPace', () => {
     const nothing = pace(new Map(), today, yesterday, now)
 
     expect(onPace(nothing, 4 * HOUR)).toBe(true)
+  })
+})
+
+describe('leadingTotals', () => {
+  const now = local('2026-08-18T09:00:00-07:00')
+  const weeks = trailingWindows(now, 'week', 3)
+
+  it('cuts every window to the same first days', () => {
+    const amounts = amountsOf({
+      // Week one: 1 on its Sunday, 100 on a day past the cut.
+      '2026-08-02': 1,
+      '2026-08-05': 100,
+      // Week two: 2 on its Sunday and 3 on its Monday.
+      '2026-08-09': 2,
+      '2026-08-10': 3,
+      // This week.
+      '2026-08-16': 4,
+      '2026-08-17': 5,
+    })
+
+    expect(leadingTotals(amounts, weeks, 2)).toEqual([1, 5, 9])
+  })
+
+  it('takes a whole window when asked for more days than it holds', () => {
+    const amounts = amountsOf({ '2026-08-16': 4, '2026-08-17': 5 })
+
+    expect(leadingTotals(amounts, [weeks[2]], 99)).toEqual([9])
   })
 })

@@ -62,15 +62,23 @@ export function weekdayProfile(
   return profile
 }
 
+/** The weekday a profile has something to say about, and the sentence saying it. */
+export type RhythmNote = {
+  weekday: number
+  text: string
+}
+
 /**
  * The weekday that stands furthest from the rest, or `null` when none of them does.
  *
  * Named rather than left for the reader to spot in the bars: a column that is visibly shorter
  * is only a fact once someone says which day it is and how much shorter. Silent when the
  * history is too thin to mean anything, or when the week is level — a flat week is not a
- * finding, and dressing one up as one is what made every other panel here furniture.
+ * finding, and dressing one up as one is what made every other panel here furniture. That
+ * silence is also what the bars key their emphasis off: with nothing to say, no column is
+ * picked out, because picking one out is itself the claim.
  */
-export function describeRhythm(profile: WeekdayAmount[], measure: Measure): string | null {
+export function describeRhythm(profile: WeekdayAmount[], measure: Measure): RhythmNote | null {
   if (profile.some((slot) => slot.days < MIN_SAMPLES)) return null
 
   const overall = profile.reduce((sum, slot) => sum + slot.mean, 0) / profile.length
@@ -84,7 +92,10 @@ export function describeRhythm(profile: WeekdayAmount[], measure: Measure): stri
   if (Math.max(downBy, upBy) < NOTABLE) return null
 
   const [slot, word] = downBy >= upBy ? [quietest, 'quietest'] : [busiest, 'strongest']
-  return `${weekdayName(slot.weekday)} is your ${word} day — ${formatAmount(measure, slot.mean)} against a ${formatAmount(measure, overall)} average.`
+  return {
+    weekday: slot.weekday,
+    text: `${weekdayName(slot.weekday)} is your ${word} day — ${formatAmount(measure, slot.mean)} against a ${formatAmount(measure, overall)} average.`,
+  }
 }
 
 /**

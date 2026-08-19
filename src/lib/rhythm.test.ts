@@ -52,13 +52,13 @@ describe('describeRhythm', () => {
   it('names the weekday that stands furthest from the rest', () => {
     const profile = weekdayProfile(byWeekday([4, 4, 0, 4, 4, 4, 4]), days, now)
 
-    expect(describeRhythm(profile, 'duration')).toMatch(/Tuesday is your quietest day/)
+    expect(describeRhythm(profile, 'duration')).toMatchObject({ weekday: 2, text: expect.stringMatching(/Tuesday is your quietest day/) })
   })
 
   it('names a peak when the peak is the bigger deviation', () => {
     const profile = weekdayProfile(byWeekday([1, 1, 1, 1, 1, 12, 1]), days, now)
 
-    expect(describeRhythm(profile, 'duration')).toMatch(/Friday is your strongest day/)
+    expect(describeRhythm(profile, 'duration')).toMatchObject({ weekday: 5, text: expect.stringMatching(/Friday is your strongest day/) })
   })
 
   it('says nothing about a level week', () => {
@@ -86,7 +86,7 @@ describe('describeRhythm', () => {
     const counted = weekdayProfile(byWeekday([1, 1, 0, 1, 1, 1, 1]), days, now)
     const timed = weekdayProfile(byWeekday([2 * HOUR, 2 * HOUR, 0, 2 * HOUR, 2 * HOUR, 2 * HOUR, 2 * HOUR]), days, now)
 
-    expect(describeRhythm(counted, 'count')).toMatch(/days/)
-    expect(describeRhythm(timed, 'duration')).toMatch(/h/)
+    expect(describeRhythm(counted, 'count')?.text).toMatch(/days/)
+    expect(describeRhythm(timed, 'duration')?.text).toMatch(/h/)
   })
 })
