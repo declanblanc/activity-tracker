@@ -290,9 +290,11 @@ export default function Insights() {
       : undefined
 
   return (
-    // A dashboard, so it earns more width than the lists do — but only past `xl`, where
-    // there is room to stand two columns of panels beside each other rather than one
-    // stretched one.
+    // A dashboard, so it earns more width than the lists do. Two columns from `md` and three
+    // from `xl`, as CSS columns rather than a grid: these panels have wildly different natural
+    // heights, and a grid ties each row to its tallest cell, which is what left the old layout
+    // with one column ending at 60% of the other. Columns balance by height instead, and
+    // `break-inside-avoid` keeps a panel whole.
     <section className="screen-pad mx-auto w-full max-w-3xl xl:max-w-6xl">
       <div className="flex items-center gap-2">
         {focus && (
@@ -405,7 +407,7 @@ export default function Insights() {
       {current.length === 0 ? (
         <p className="mt-8 text-center text-sm text-ink-muted">This {scale} has not started yet.</p>
       ) : (
-        <div className="xl:columns-2 xl:gap-6 [&>*]:break-inside-avoid">
+        <div className="md:columns-2 md:gap-5 xl:columns-3 xl:gap-6 [&>*]:break-inside-avoid">
           <Highlights highlights={highlights} />
 
           {focus && (
