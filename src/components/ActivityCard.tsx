@@ -92,7 +92,7 @@ function WeekStrip({
 
   return (
     <div
-      className="mt-3 flex"
+      className="mt-2 flex"
       style={{ '--activity': color, gap: `${GAP}px` } as CSSProperties}
     >
       {days.map((day) => {
@@ -173,12 +173,15 @@ function CardShell({
   onOpen,
   summary,
   running = false,
+  compact = false,
   action,
   children,
 }: Shared & {
   summary: ReactNode
   /** Whether this activity's timer is running right now. Both cards say so the same way. */
   running?: boolean
+  /** Tighter padding and a smaller identity dot, so more cards fit without scrolling. */
+  compact?: boolean
   action: ReactNode
   children?: ReactNode
 }) {
@@ -192,7 +195,7 @@ function CardShell({
           tint, a rail and a dot — never under text. See `activity-tint` in index.css. */}
       <div
         style={{ '--activity': activity.color } as CSSProperties}
-        className={`rounded-2xl p-4 ${running ? 'activity-tint activity-rail' : ''}`}
+        className={`rounded-2xl ${compact ? 'p-2.5' : 'p-4'} ${running ? 'activity-tint activity-rail' : ''}`}
       >
         <div className="flex items-start gap-3">
           {/* The title block is the affordance for the detail sheet, rather than the whole
@@ -204,7 +207,7 @@ function CardShell({
           >
             <span
               aria-hidden
-              className={`flex size-8 shrink-0 items-center justify-center rounded-full text-sm ${
+              className={`flex ${compact ? 'size-6' : 'size-8'} shrink-0 items-center justify-center rounded-full text-sm ${
                 running ? 'activity-live' : ''
               }`}
               style={{ backgroundColor: activity.color }}
@@ -288,6 +291,7 @@ export function CountCard({
     <CardShell
       {...shared}
       running={running}
+      compact={compact}
       summary={goalSummary(activity, thisWeek, streak, total)}
       action={
         // A running timer takes the slot, because it is the one thing here with something to
@@ -372,6 +376,7 @@ export function DurationCard({
   startedAt,
   todayTotal,
   inBlock,
+  compact = false,
   onStart,
   onPause,
   onStop,
@@ -383,6 +388,8 @@ export function DurationCard({
   todayTotal: number
   /** Whether a block is open at all — false once stopped, and before the first start. */
   inBlock: boolean
+  /** Tighter padding and a smaller identity dot, so more cards fit without scrolling. */
+  compact?: boolean
   onStart: () => void
   onPause: () => void
   onStop: () => void
@@ -394,6 +401,7 @@ export function DurationCard({
     <CardShell
       {...shared}
       running={running}
+      compact={compact}
       summary={<TimerReading startedAt={startedAt} todayTotal={todayTotal} />}
       action={
         <>

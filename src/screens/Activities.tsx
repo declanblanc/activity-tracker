@@ -364,6 +364,7 @@ export default function Activities() {
         startedAt={startedAt}
         todayTotal={dayTotals.perActivity.get(activity.id) ?? 0}
         inBlock={blockStart !== undefined}
+        compact={compact}
         onStart={() => void startOrResume(activity.id)}
         onPause={() => void pause(activity.id)}
         onStop={() => void stop(activity.id)}
@@ -393,8 +394,9 @@ export default function Activities() {
       <header className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-semibold text-ink">Activities</h1>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          {/* Only worth offering once a strip is actually taking up room to reclaim. */}
-          {checkoffs.length > 0 && (
+          {/* Only worth offering once there is a card whose room it could reclaim: it now
+              tightens every card's own padding, not just the check-off strip. */}
+          {visible.length > 0 && (
             <Button
               variant="ghost"
               aria-pressed={compact}
@@ -739,7 +741,7 @@ function ActivityZone({
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={ids} strategy={rectSortingStrategy}>
         <div
-          className={`mt-3 grid items-start gap-4 ${
+          className={`mt-3 grid items-start ${compact ? 'gap-2' : 'gap-4'} ${
             // A shorter card wants a narrower column too, so compact packs more across as well as down.
             compact
               ? '[grid-template-columns:repeat(auto-fill,minmax(min(15rem,100%),1fr))]'
