@@ -99,7 +99,10 @@ These are the ones that look wrong until you know why. All are settled decisions
   one. `leadingTotals` is the same rule for a rank: it cuts every past period to the same first N
   days before placing this one among them. `onPace` asks for the closed days' worth and not the
   day in progress, so "behind" means the period has already slipped rather than that it is early
-  in the morning.
+  in the morning. This governs *comparing one period against another* — the Trend and `Delta`
+  charts — and nothing loosens it. The `Pace` panel's owed number is a different thing: it is a
+  part measured against a *prorated part*, never a whole, so it is exempt without touching any of
+  the above.
 - **A panel that has nothing to say renders nothing, and that silence is load-bearing.**
   `Highlights`, `WorthALook`, `Standing`'s rank row and `describeRhythm` all return null rather
   than manufacture a finding, and the thresholds that make them do so are deliberate: a mover
@@ -110,7 +113,18 @@ These are the ones that look wrong until you know why. All are settled decisions
   record**, since periods before it existed are not quiet periods, and `WhatGotDone` hides at the
   day scale, where every row is 1 of 1 and a full bar means "goal met" everywhere else in the app.
 - **Targets are scored only at their own period.** A 10h/week target shows no goal on the day or
-  month scale. No pro-rating.
+  month scale. No pro-rating — *of the goal*. That is a rule about **scoring**: the `Goals` panel
+  refuses to say "you're 40% of a weekly goal" while looking at a Tuesday. It is not a rule about
+  **owing**. The `Pace` panel deliberately prorates the *owed* amount continuously (`expectedSoFar`
+  in `lib/owed.ts`): a 40h/week commitment three-and-a-half weeks in has earned 140h of debt, and
+  the tracked-vs-owed delta says so on every scale, all-time included. The two coexist because they
+  answer different questions — *is this goal met this period* vs *am I ahead of the running total* —
+  and only the second one is honestly cumulative. Duration goals only: a check-off's days-owed can
+  never be caught up, so it is not shown. The owe anchors at the activity's **first record** (the
+  same reason the mover baseline does — earlier periods did not exist), applies the *current* rate
+  retroactively (no goal history is stored, and the whole-DB-blob sync keeps it that way — a
+  `ponytail:` in `Pace`), and `all-time` is a reading `Scale`, never a `Period`, so it can never
+  become a settable goal.
 - **A streak skips an in-progress period, unless it has already met its target** — then it counts
   immediately. Waiting for the period to close would mean ticking today never moves the number,
   which is the point of a contribution grid.
