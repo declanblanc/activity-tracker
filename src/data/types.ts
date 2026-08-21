@@ -24,13 +24,24 @@ export function newId(): string {
 export type DateKey = string
 
 /**
- * The three period sizes everything is read at, and the size a target is set at.
+ * The three period sizes a target is set at, and the three the history repeats over.
  *
  * One type, not two: the sibling app kept a `Scale` for reading and a `TargetPeriod` for
  * goals as separate but structurally identical types, and every use compared them with
- * `===` anyway.
+ * `===` anyway. See `Scale` for where the two axes finally do diverge.
  */
 export type Period = 'day' | 'week' | 'month'
+
+/**
+ * The lens Insights reads through — the three periods plus `all-time`.
+ *
+ * `Scale` is a *superset* of `Period`, and the difference is the whole reason the two are split
+ * again after the merge above. `all-time` is a way to *read* history (one unbounded window, no
+ * previous or next), never a size a goal can be *set* at — "40h all-time" is not a commitment
+ * with a rate. Keeping it out of `Period` keeps it out of the goal form, the target validators
+ * and the streak arithmetic, all of which stay exhaustively keyed by the three real periods.
+ */
+export type Scale = Period | 'all-time'
 
 /**
  * Which axis an activity is *scored* on — the one the single goal, the streak, the "total" and

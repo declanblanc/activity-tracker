@@ -10,6 +10,7 @@ import Coverage from '../components/insights/Coverage.tsx'
 import FocusSummary from '../components/insights/FocusSummary.tsx'
 import Goals from '../components/insights/Goals.tsx'
 import Highlights from '../components/insights/Highlights.tsx'
+import Pace from '../components/insights/Pace.tsx'
 import Rhythm from '../components/insights/Rhythm.tsx'
 import Standing from '../components/insights/Standing.tsx'
 import Trend from '../components/insights/Trend.tsx'
@@ -21,7 +22,7 @@ import { getActivities } from '../data/activities.ts'
 import { getCompletions } from '../data/completions.ts'
 import { getEntriesForActivity, getEntriesInRange, getOpenEntries } from '../data/entries.ts'
 import { getPref, setPref } from '../data/prefs.ts'
-import { OPEN_ENTRY_END, type Activity, type DateKey, type Period } from '../data/types.ts'
+import { OPEN_ENTRY_END, type Activity, type DateKey, type Period, type Scale } from '../data/types.ts'
 import { streaks, targetAt, type ScoredPeriod } from '../lib/accounting/goals.ts'
 import { bucketTotals } from '../lib/accounting/totals.ts'
 import { personalBests } from '../lib/bests.ts'
@@ -29,12 +30,20 @@ import { strongestLink } from '../lib/correlate.ts'
 import { completionAmounts, dayAmounts, periodAmounts } from '../lib/days.ts'
 import { buildDigest, type ActivityDigestInput } from '../lib/digest.ts'
 import { periodLabel, thisPeriod } from '../lib/format.ts'
-import { leadingTotals, pace, type Pace } from '../lib/pace.ts'
+import { expectedSoFar } from '../lib/owed.ts'
+import { leadingTotals, pace, type Pace as PaceShape } from '../lib/pace.ts'
 import { weekdayProfile } from '../lib/rhythm.ts'
-import { dateKey, dayWindowsIn, periodWindow, trailingWindows, type TimeWindow } from '../lib/time.ts'
+import {
+  dateKey,
+  dayWindowsIn,
+  parseKey,
+  periodWindow,
+  trailingWindows,
+  type TimeWindow,
+} from '../lib/time.ts'
 import { useNow } from '../lib/useNow.ts'
 
-const SCALES: Period[] = ['day', 'week', 'month']
+const SCALES: Scale[] = ['day', 'week', 'month', 'all-time']
 
 /** How many columns of history the focused heat grid draws. */
 const FOCUS_WEEKS = 53
@@ -83,7 +92,13 @@ const STREAK_PERIODS = 12
  */
 export default function Insights() {
   const now = useNow(30_000)
-  const [scale, setScale] = useState<Period>(() => getPref('insightsScale'))
+  const [scale, setScale] = useState<Scale>(() => getPref('insightsScale'))
+  // The repeating period the trailing-window machinery runs at. All-time reads through a single
+  // unbounded window instead — every panel that needs a repeating period is hidden under it — so
+  // this falls back to a day only to keep those (then unrendered) computations well-formed and
+  // type-correct. Nowhere all-time actually shows reads through it.
+  const allTime = scale === 'all-time'
+  const periodScale: Period = allTime ? 'day' : scale
   const [anchor, setAnchor] = useState(() => Date.now())
   // A stretch of this activity being written down by hand. Only ever opened from the
   // focused view, so it starts out pointed at the activity on screen.
@@ -116,8 +131,8 @@ export default function Insights() {
     [focusId],
   )
 
-  const view = periodWindow(anchor, scale)
-  const trend = trailingWindows(view.start, scale, TREND_PERIODS)
+  const view = periodWindow(anchor, periodScale)
+  const trend = trailingWindows(view.start, periodScale, TREND_PERIODS)
   const rhythmWeeks = trailingWindows(now, 'week', RHYTHM_WEEKS)
   // A streak is counted at the target's own period, which need not be the scale on
   // screen, so each target period in use gets its own run of windows.
@@ -216,7 +231,8 @@ export default function Insights() {
   }
 
   /** How far into the viewed period a series is, against the same span of the one before. */
-  const paceOf = (amounts: Map<DateKey, number>): Pace => pace(amounts, view, previous.window, now)
+  const paceOf = (amounts: Map<DateKey, number>): PaceShape =>
+    pace(amounts, view, previous.window, now)
   const timePace = (activityId: string) => paceOf(timeByDay.get(activityId) ?? new Map())
 
   const rhythmDays = readDays.filter((day) => day.start >= rhythmWeeks[0].start)
@@ -225,7 +241,7 @@ export default function Insights() {
   // The digest is built from numbers the panels below already show — the work is in ranking
   // them, not in computing anything new.
   const digestInputs: ActivityDigestInput[] = (focus ? [focus] : live).map((activity) => {
-    const target = targetAt(activity, scale)
+    const target = targetAt(activity, periodScale)
     return {
       activity,
       goal:
@@ -234,12 +250,16 @@ export default function Insights() {
           : {
               target,
               total: amountsFor(activity, [view])[0]?.total ?? 0,
-              streak: streaks(amountsFor(activity, streakWindows.get(scale) ?? []), target, now),
+              streak: streaks(
+                amountsFor(activity, streakWindows.get(periodScale) ?? []),
+                target,
+                now,
+              ),
             },
       trend: amountsFor(activity, trend),
     }
   })
-  const highlights = buildDigest(digestInputs, scale, now)
+  const highlights = buildDigest(digestInputs, periodScale, now)
 
   const bests = focus && focusHistory ? personalBests(focus, focusHistory, completions, now) : null
 
@@ -288,6 +308,52 @@ export default function Insights() {
     focus && contains(view, now)
       ? openEntries?.find((entry) => entry.activityId === focus.id)?.startedAt
       : undefined
+
+  /**
+   * Hours tracked against hours owed, for a focused time-based goal — the one panel that reads
+   * the same on every scale, including all-time.
+   *
+   * Duration goals only: a check-off's days-owed can never be caught up, so the comparison is
+   * meaningless there. The span is the viewed period at day/week/month, or the whole life of the
+   * activity under all-time — where the owe is anchored at the first record (earlier periods are
+   * not quiet, they did not exist) and the tracked total comes from the unbounded focus read.
+   */
+  function buildPaceCard() {
+    if (!focus || focus.measure !== 'duration' || focus.targetAmount == null || focus.targetPeriod == null) {
+      return null
+    }
+    // A representative period's length is the rate's denominator. ponytail: this ignores the
+    // hour a DST week gains or loses; the goal owner set a round number, not a to-the-second rate.
+    const period = periodWindow(now, focus.targetPeriod)
+    const periodMs = period.end - period.start
+
+    if (allTime) {
+      const records: number[] = (focusHistory ?? []).map((entry) => entry.startedAt)
+      for (const completion of completions ?? []) {
+        if (completion.activityId === focus.id) records.push(parseKey(completion.day).getTime())
+      }
+      if (records.length === 0) return null
+      const anchor = Math.min(...records)
+      // Union == per-activity sum for one activity's flat intervals, so either reads its tracked time.
+      const tracked = bucketTotals(focusHistory ?? [], [{ start: anchor, end: now }], now)[0]?.tracked ?? 0
+      const expected = expectedSoFar(focus.targetAmount, periodMs, now - anchor)
+      // With the year: an all-time span reaches back months or years, where a bare "Aug 22" is
+      // ambiguous in a way a period label inside the current year is not.
+      const since = new Date(anchor).toLocaleDateString([], {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
+      return <Pace activity={focus} tracked={tracked} expected={expected} spanLabel={`Since ${since}`} />
+    }
+
+    const tracked = current.perActivity.get(focus.id) ?? 0
+    const elapsed = Math.min(now, view.end) - view.start
+    const expected = expectedSoFar(focus.targetAmount, periodMs, elapsed)
+    const spanLabel = contains(view, now) ? thisPeriod(periodScale) : periodLabel(view, periodScale)
+    return <Pace activity={focus} tracked={tracked} expected={expected} spanLabel={spanLabel} />
+  }
+  const paceCard = buildPaceCard()
 
   return (
     // A dashboard, so it earns more width than the lists do. Two columns from `md` and three
@@ -378,20 +444,30 @@ export default function Insights() {
                   : 'text-ink-muted hover:text-ink'
               }`}
             >
-              {option}
+              {/* The hyphen is not a word boundary for `capitalize`, so the raw value renders as
+                  "All-time"; the space form title-cases to "All Time". */}
+              {option === 'all-time' ? 'all time' : option}
             </button>
           ))}
         </div>
 
-        <PeriodStepper
-          className="min-w-0 flex-1 md:max-w-72"
-          label={contains(view, now) ? thisPeriod(scale) : periodLabel(view, scale)}
-          previousLabel={`Previous ${scale}`}
-          nextLabel={`Next ${scale}`}
-          onPrevious={() => setAnchor(view.start - 1)}
-          // Not past the period the clock is in: nothing is recorded ahead of now.
-          onNext={view.end <= now ? () => setAnchor(view.end) : undefined}
-        />
+        {/* All-time is one unbounded window with no previous or next, so the stepper has nothing
+            to step — a static label stands in its place. */}
+        {allTime ? (
+          <p className="min-w-0 flex-1 px-3 text-center text-sm font-medium text-ink md:max-w-72">
+            All time
+          </p>
+        ) : (
+          <PeriodStepper
+            className="min-w-0 flex-1 md:max-w-72"
+            label={contains(view, now) ? thisPeriod(periodScale) : periodLabel(view, periodScale)}
+            previousLabel={`Previous ${periodScale}`}
+            nextLabel={`Next ${periodScale}`}
+            onPrevious={() => setAnchor(view.start - 1)}
+            // Not past the period the clock is in: nothing is recorded ahead of now.
+            onNext={view.end <= now ? () => setAnchor(view.end) : undefined}
+          />
+        )}
       </div>
 
       {draft && (
@@ -404,8 +480,26 @@ export default function Insights() {
         />
       )}
 
-      {current.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-ink-muted">This {scale} has not started yet.</p>
+      {allTime ? (
+        <div className="md:columns-2 md:gap-5 xl:columns-3 xl:gap-6 [&>*]:break-inside-avoid">
+          {/* All-time is a focused-only lens: every panel it could show is about one activity's
+              own history. The record book still fits — a lifetime total is timeless — but its
+              period-rank does not, so it is dropped (rank={null}). */}
+          {focus ? (
+            <>
+              {paceCard}
+              {bests && <Standing activity={focus} bests={bests} rank={null} scale={periodScale} />}
+            </>
+          ) : (
+            <p className="mt-8 text-center text-sm text-ink-muted">
+              Pick an activity to see its all-time pace.
+            </p>
+          )}
+        </div>
+      ) : current.length === 0 ? (
+        <p className="mt-8 text-center text-sm text-ink-muted">
+          This {periodScale} has not started yet.
+        </p>
       ) : (
         <div className="md:columns-2 md:gap-5 xl:columns-3 xl:gap-6 [&>*]:break-inside-avoid">
           <Highlights highlights={highlights} />
@@ -414,7 +508,7 @@ export default function Insights() {
             <FocusSummary
               activity={focus}
               current={current}
-              scale={scale}
+              scale={periodScale}
               runningSince={runningSince}
               history={amountsFor(focus, streakWindows.get(focus.targetPeriod ?? 'day') ?? [])}
               pace={timePace(focus.id)}
@@ -422,20 +516,22 @@ export default function Insights() {
             />
           )}
 
+          {paceCard}
+
           <Goals
             // Passing the one activity is all the filtering the panel needs; it already skips
             // anything without a target at this scale.
             activities={focus ? [focus] : activities}
-            scale={scale}
+            scale={periodScale}
             currentAmount={(activity) => amountsFor(activity, [view])[0]?.total ?? 0}
-            historyFor={(activity) => amountsFor(activity, streakWindows.get(scale) ?? [])}
+            historyFor={(activity) => amountsFor(activity, streakWindows.get(periodScale) ?? [])}
             paceFor={(activity) => paceOf(amountsByDay(activity))}
             daysLeft={daysLeft}
             now={now}
           />
 
           {focus && bests && (
-            <Standing activity={focus} bests={bests} rank={rankOf(focus)} scale={scale} />
+            <Standing activity={focus} bests={bests} rank={rankOf(focus)} scale={periodScale} />
           )}
 
           {/* Focused: this activity's own series, in its own unit. Unfocused: the tracked
@@ -446,10 +542,10 @@ export default function Insights() {
               below does not draw better. This is the sanctioned kind of `measure` branch — it
               picks which components render, and computes no second number. */}
           {focus ? (
-            !(focus.measure === 'count' && scale === 'day') && (
+            !(focus.measure === 'count' && periodScale === 'day') && (
               <Trend
                 periods={amountsFor(focus, trend)}
-                scale={scale}
+                scale={periodScale}
                 measure={focus.measure}
                 title={focus.name}
                 projected={paceOf(amountsByDay(focus)).projected}
@@ -460,7 +556,7 @@ export default function Insights() {
             anyTimed && (
               <Trend
                 periods={byPeriod.map((period) => ({ window: period.window, total: period.tracked }))}
-                scale={scale}
+                scale={periodScale}
                 measure="duration"
                 title="Tracked"
                 projected={paceOf(trackedByDay).projected}
@@ -508,7 +604,7 @@ export default function Insights() {
               them, and it divides by the period length — which makes "share of the period" for
               five check-offs meaningless. */}
           {!focus && anyTimed && (
-            <Breakdown current={current} activities={activities} scale={scale} paceFor={timePace} />
+            <Breakdown current={current} activities={activities} scale={periodScale} paceFor={timePace} />
           )}
 
           {/* Anything checked off — see `HeatGrid`. Every activity can be, so this shows for any
@@ -539,7 +635,7 @@ export default function Insights() {
           {/* Coverage of the period, so it needs something timed to be coverage *of*. Last and
               collapsed: it is context for the panels above, not the headline it used to be. */}
           {!focus && anyTimed && (
-            <Coverage current={current} scale={scale} pace={paceOf(trackedByDay)} />
+            <Coverage current={current} scale={periodScale} pace={paceOf(trackedByDay)} />
           )}
         </div>
       )}

@@ -1,4 +1,4 @@
-import type { Period } from './types.ts'
+import type { Scale } from './types.ts'
 
 /**
  * Persisted device settings — the second of the three state tiers (Dexie for domain data,
@@ -14,7 +14,7 @@ import type { Period } from './types.ts'
 
 /** The complete list of persisted device state. */
 type Prefs = {
-  insightsScale: Period
+  insightsScale: Scale
   /** Activities screen: drop each card's heat strip so more fit on one page. */
   compactActivities: boolean
   /** Epoch ms; 0 = not snoozed. */
