@@ -10,7 +10,7 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router'
 import Button from '../components/ui/Button.tsx'
 import { deleteAllData } from '../data/db.ts'
-import { getPref, setPref, usePref } from '../data/prefs.ts'
+import { getPref, setPref } from '../data/prefs.ts'
 import { syncNow } from '../data/sync.ts'
 import { exportCsv, exportJson, importJson, restoreJson } from '../data/transfer.ts'
 import { toDateTimeInput } from '../lib/time.ts'
@@ -31,8 +31,10 @@ export default function Settings() {
   const fileInput = useRef<HTMLInputElement>(null)
   const restoreInput = useRef<HTMLInputElement>(null)
   const [token, setToken] = useState(() => getPref('syncToken'))
-  // Subscribed, so `SyncAgent`'s background runs move the line beneath the buttons too.
-  const lastSyncAt = usePref('lastSyncAt')
+  // Held in state rather than read on each render, so a sync started here updates the line
+  // beneath it. `SyncAgent`'s background runs are not reflected until the screen is reopened,
+  // which is the whole cost of not putting a device setting into Dexie.
+  const [lastSyncAt, setLastSyncAt] = useState(() => getPref('lastSyncAt'))
   // The delete gate is two steps: an initial button reveals the text input, and the wipe only
   // fires once the owner has typed the confirmation word into it.
   const [confirmingDelete, setConfirmingDelete] = useState(false)
@@ -69,7 +71,8 @@ export default function Settings() {
   /** Saves first, so "Sync now" works on a token that was typed but not yet saved. */
   async function syncAndReport(): Promise<string> {
     setPref('syncToken', token.trim())
-    await syncNow()
+    const { syncedAt } = await syncNow()
+    setLastSyncAt(syncedAt)
     return 'Synced.'
   }
 
