@@ -42,7 +42,10 @@ These are the ones that look wrong until you know why. All are settled decisions
 - **`HeatGrid` is for check-off activities only**, and takes a colour and a weekly target rather
   than an `Activity` so there is nothing in it to branch on. A contribution square is on or off,
   which throws away the quantity that is the whole point of a timed activity. Timed history lives
-  in the sheet's own entry list, the Today timeline and the Insights trend.
+  in the sheet's own entry list, the Today timeline and the Insights trend. A timer card's body is
+  a large live readout instead, which is also what sets it apart from habit cards in the one list
+  they share; the grid's default `stretch` evens the heights in a row, which is why there are no
+  per-kind zones.
 - **An activity's history and its corrections live in its sheet**, not on a screen of their own.
   `ActivitySheet` owns the entry-list draft state, so closing the sheet discards a half-typed
   correction and no screen has to know one was in progress. The list is sliced from the year the

@@ -84,8 +84,8 @@ const STREAK_PERIODS: Record<Period, number> = {
  * The dashboard: every activity as a card, whichever way it is tracked.
  *
  * A check-off card carries one round toggle for today; a timed card carries start/pause and
- * stop with a live reading. Both carry the same heat strip, because `lib/days.ts` reduces both
- * to one amount per day — which is the whole reason this is one screen and not two.
+ * stop over a live readout. They share a shell, so they share one list in the owner's own order,
+ * and differ in the body: a habit card's history grid, a timer card's clock.
  *
  * Three clocks, deliberately. `useToday` names the day, and re-samples at midnight so a PWA
  * left open overnight does not log to yesterday. `useNow(30s)` refreshes the day summary. The
@@ -314,13 +314,6 @@ export default function Activities() {
   const openActivity = activities.find((activity) => activity.id === openId)
   const openIndex = visible.findIndex((activity) => activity.id === openId)
 
-  // Two zones, timers above habits. The split is the whole gap fix: a timer card has no heat
-  // strip and a habit card does, so mixing them in one grid left every short card with dead
-  // space beneath it. Grouped, each zone holds one card height and packs flush. `display` picks
-  // the zone and the card alike — it is the one thing that says which card this activity gets.
-  const timers = visible.filter((activity) => displayMode(activity) === 'timer')
-  const checkoffs = visible.filter((activity) => displayMode(activity) === 'habit')
-  const bothZones = timers.length > 0 && checkoffs.length > 0
   // Never leave a card stuck as a drag handle: if the list shrinks to one while editing, the
   // Reorder toggle is gone, so reorder mode has to switch itself off or that card is uninteractable.
   const reordering = editing && visible.length > 1
@@ -355,6 +348,9 @@ export default function Activities() {
     ) : (
       <DurationCard
         {...shared}
+        thisWeek={stats.thisWeek}
+        streak={stats.streak}
+        total={stats.total}
         startedAt={startedAt}
         todayTotal={dayTotals.perActivity.get(activity.id) ?? 0}
         inBlock={blockStart !== undefined}
@@ -367,16 +363,18 @@ export default function Activities() {
   }
 
   /**
-   * Persist a zone's new order without disturbing the other zone or any hidden card.
+   * Persist the visible cards' new order without disturbing any hidden card.
    *
-   * The drag reorders one zone's ids; this drops them back into the slots that zone already
-   * held in the global order, leaving every non-member — the other zone, and archived cards when
-   * they are hidden — exactly where it was. Same move `move()` makes for the up/down buttons.
+   * The drag reorders the visible ids; this drops them back into the slots they already held in
+   * the global order, leaving archived cards, when they are hidden, exactly where they were. Same
+   * move `move()` makes for the up/down buttons.
    */
-  const persistZoneOrder = (zoneOrder: string[]) => {
-    const inZone = new Set(zoneOrder)
+  const persistOrder = (visibleOrder: string[]) => {
+    const shown = new Set(visibleOrder)
     let next = 0
-    const order = activities.map((activity) => (inZone.has(activity.id) ? zoneOrder[next++] : activity.id))
+    const order = activities.map((activity) =>
+      shown.has(activity.id) ? visibleOrder[next++] : activity.id,
+    )
     return reorderActivities(order)
   }
 
@@ -442,38 +440,14 @@ export default function Activities() {
         </EmptyState>
       )}
 
-      {/* Headings only earn their space when there are two zones to tell apart; a single-kind
-          list needs no label above it. */}
-      {timers.length > 0 && (
-        <>
-          {bothZones && <ZoneHeading>Timers</ZoneHeading>}
-          <ActivityZone
-            activities={timers}
-            editing={reordering}
-            compact={compact}
-            dense
-            // A timer mid-block shows both Pause and Stop, which will not fit a half-width cell,
-            // so it takes the whole row. `startedAtByActivity` misses a paused block, so the
-            // stored block marker is the first source, its open entry the fallback.
-            fullWidth={(activity) =>
-              (blockStartedAt[activity.id] ?? startedAtByActivity.get(activity.id)) !== undefined
-            }
-            onReorder={persistZoneOrder}
-            renderCard={renderCard}
-          />
-        </>
-      )}
-      {checkoffs.length > 0 && (
-        <>
-          {bothZones && <ZoneHeading>Habits</ZoneHeading>}
-          <ActivityZone
-            activities={checkoffs}
-            editing={reordering}
-            compact={compact}
-            onReorder={persistZoneOrder}
-            renderCard={renderCard}
-          />
-        </>
+      {visible.length > 0 && (
+        <ActivityGrid
+          activities={visible}
+          editing={reordering}
+          compact={compact}
+          onReorder={persistOrder}
+          renderCard={renderCard}
+        />
       )}
 
       {archivedCount > 0 && (
@@ -687,47 +661,25 @@ function summariseActivity(
  */
 const checked = (stats: ActivityStats, day: DateKey) => (stats.gridAmounts.get(day) ?? 0) > 0
 
-/** The eyebrow that titles a zone, matching the day-summary panel's own label. */
-function ZoneHeading({ children }: { children: ReactNode }) {
-  return (
-    <h2 className="mt-6 mb-1 text-2xs font-semibold tracking-widest text-ink-muted uppercase">
-      {children}
-    </h2>
-  )
-}
-
 /**
- * One zone of same-height cards, reorderable by drag while `editing`.
+ * Every visible card in one grid, habits and timers mixed, reorderable by drag while `editing`.
  *
- * Its own `DndContext` pens a drag inside the zone: a timer can never be dragged in among the
- * check-offs, which is right — the lead measure, not a position, decides which card an activity
- * wears. `rectSortingStrategy` is the grid-aware one, so the cards reflow across rows as one moves.
- * The grid template is the same one the dashboard has always used; only the parent's width cap
- * changed, which is what lets it fan out to three columns on a desktop.
- *
- * `dense` narrows the compact column so two cards fit a phone row. Only the timer zone asks for
- * it: a timer card is a short row that wasted the width beside it, where a check-off card carries
- * a week strip that wants the whole width to itself.
+ * The grid's default `stretch` is what lets the two kinds share it. There were two zones while
+ * the grid aligned cards to the top, because a short timer card beside a tall habit card left
+ * dead space under it; stretched, every card in a row is the row's height and the timer card's
+ * readout centres in what it is given. So the order the owner chose is the only order.
+ * `rectSortingStrategy` is the grid-aware one, so the cards reflow across rows as one moves.
  */
-function ActivityZone({
+function ActivityGrid({
   activities,
   editing,
   compact,
-  dense = false,
-  fullWidth,
   onReorder,
   renderCard,
 }: {
   activities: Activity[]
   editing: boolean
   compact: boolean
-  dense?: boolean
-  /**
-   * Which cards break out of the dense two-up back to a full row. A timer with an open block
-   * carries two controls that a half-width column has no room for; it is also the one card here
-   * worth the prominence. Only consulted when the grid is actually packing cards two-up.
-   */
-  fullWidth?: (activity: Activity) => boolean
   onReorder: (orderedIds: string[]) => void
   renderCard: (activity: Activity) => ReactNode
 }) {
@@ -746,26 +698,21 @@ function ActivityZone({
   }
 
   // The smallest a card's column may shrink to before the grid wraps to fewer of them. A shorter
-  // card wants a narrower column, so compact packs more across as well as down; `dense` narrows it
-  // again to two on a phone. `min(…,100%)` keeps a single card from overflowing a hand's-width screen.
-  const minColumn = !compact ? '20rem' : dense ? '10rem' : '15rem'
+  // card wants a narrower column, so compact packs more across as well as down. `min(…,100%)`
+  // keeps a single card from overflowing a hand's-width screen.
+  const minColumn = compact ? '15rem' : '20rem'
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
       <SortableContext items={ids} strategy={rectSortingStrategy}>
         <div
-          className={`mt-3 grid items-start ${compact ? 'gap-2' : 'gap-4'}`}
+          className={`mt-3 grid ${compact ? 'gap-2' : 'gap-4'}`}
           style={{
             gridTemplateColumns: `repeat(auto-fill, minmax(min(${minColumn}, 100%), 1fr))`,
           }}
         >
           {activities.map((activity) => (
-            <SortableCard
-              key={activity.id}
-              id={activity.id}
-              editing={editing}
-              fullWidth={compact && dense && (fullWidth?.(activity) ?? false)}
-            >
+            <SortableCard key={activity.id} id={activity.id} editing={editing}>
               {renderCard(activity)}
             </SortableCard>
           ))}
@@ -784,13 +731,10 @@ function ActivityZone({
 function SortableCard({
   id,
   editing,
-  fullWidth = false,
   children,
 }: {
   id: string
   editing: boolean
-  /** Span every column of the grid rather than one, for a card that needs a whole row. */
-  fullWidth?: boolean
   children: ReactNode
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -801,30 +745,29 @@ function SortableCard({
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: isDragging ? 10 : undefined,
-    gridColumn: fullWidth ? '1 / -1' : undefined,
   }
 
   if (!editing) {
     return (
-      <div ref={setNodeRef} style={style}>
+      <div ref={setNodeRef} style={style} className="h-full">
         {children}
       </div>
     )
   }
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} style={style} className="h-full">
       <div
         {...attributes}
         {...listeners}
         // `touch-none` so a touch-drag reorders the card instead of scrolling the page under it.
-        className={`focus-ring touch-none rounded-2xl ${
+        className={`focus-ring h-full touch-none rounded-2xl ${
           isDragging ? 'cursor-grabbing opacity-80 shadow-lg shadow-black/40' : 'cursor-grab'
         }`}
       >
         {/* `inert` lifts the card's own buttons out of pointer, focus and the a11y tree while it
             is a handle; the class also drops them from the pointer path so the press lands here. */}
-        <div className="pointer-events-none" inert>
+        <div className="pointer-events-none h-full" inert>
           {children}
         </div>
       </div>

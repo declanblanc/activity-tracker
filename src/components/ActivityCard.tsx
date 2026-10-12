@@ -12,12 +12,13 @@ import { formatAmount } from '../lib/format.ts'
 import { GAP, SQUARE, weeksThatFit } from '../lib/heatStrip.ts'
 import { formatKey, shiftKey } from '../lib/time.ts'
 import { HeatGrid } from './HeatGrid.tsx'
-import { TimerReading } from './TimerReading.tsx'
-import { IconButton } from './ui/Button.tsx'
+import { TimerReadout } from './TimerReading.tsx'
 
 /**
- * The dashboard's cards. Two components rather than one with a branch, over a shared shell
- * and a shared heat strip.
+ * The dashboard's cards. Two components rather than one with a branch, over a shared shell.
+ * The shell is what makes them one list — same surface, identity block and round control in the
+ * corner — and the body is what tells them apart: a habit card's is its history, a timer card's
+ * is its clock.
  *
  * A single component would take eight props a check-off card ignores and one a timed card
  * ignores, and a discriminated prop union cannot narrow from a nested `activity.measure`, so
@@ -65,6 +66,7 @@ function useFittingWeeks(max: number) {
 
 /** The compact strip's span: the last week, at a glance. */
 const COMPACT_DAYS = 7
+
 
 /**
  * The last seven days as a single horizontal row — the compact card's heat strip.
@@ -129,11 +131,13 @@ type Shared = {
 }
 
 /**
- * The round control in a check-off card's action slot — today's toggle, or Stop while a timer
- * runs. One class string because the two swap places: a control that changed size or shape as
- * the timer started would move the card's header under the thumb that started it.
+ * The round control in a card's action slot — a habit's toggle for today (or Stop while a timer
+ * runs), and a timer's Start/Pause. One class string because it is one control to the eye: a
+ * dashboard of mixed cards reads as one list when every card leads with the same circle in its
+ * own colour. It also keeps a habit card's toggle and Stop, which swap places, the same size, so
+ * the header does not move under the thumb that started the timer.
  *
- * `compact` shrinks it to match the compact timer cards' controls, below the usual 44px target.
+ * `compact` shrinks it to `size-9`, below the usual 44px target.
  *
  * The "pop" is a CSS transform on press. A spring library would buy nothing a 120ms scale cannot.
  */
@@ -165,10 +169,11 @@ function goalSummary(
 }
 
 /**
- * The card shell: the surface, the identity block and the one control beside it.
+ * The card shell: the surface, the identity block and the control beside it.
  *
- * Anything below that is the measure's own business — which in practice means the check-off card's
- * heat strip, since a timed card has nothing a grid could honestly say.
+ * Anything below that is the card's own business: a habit card's heat grid, a timer card's
+ * readout. The shell fills its grid cell, so a card beside a taller one stretches to match rather
+ * than leaving a gap under it.
  */
 function CardShell({
   activity,
@@ -192,12 +197,12 @@ function CardShell({
     // `background-color` too, so it would replace the panel's fill rather than sit on it. The
     // tint goes on the inner wrapper instead, which is why the padding does too — it has to
     // cover the whole card for the tint to.
-    <div className={`panel ${activity.archived ? 'opacity-50' : ''}`}>
+    <div className={`panel h-full ${activity.archived ? 'opacity-50' : ''}`}>
       {/* The activity's colour reaches the card through one custom property, and only as a
           tint, a rail and a dot — never under text. See `activity-tint` in index.css. */}
       <div
         style={{ '--activity': activity.color } as CSSProperties}
-        className={`rounded-2xl ${compact ? 'p-2.5' : 'p-4'} ${running ? 'activity-tint activity-rail' : ''}`}
+        className={`flex h-full flex-col rounded-2xl ${compact ? 'p-2.5' : 'p-4'} ${running ? 'activity-tint activity-rail' : ''}`}
       >
         <div className="flex items-start gap-3">
           {/* The title block is the affordance for the detail sheet, rather than the whole
@@ -302,7 +307,7 @@ export function CountCard({
         // has tracked, so the toggle it replaces has nothing to say until the timer stops.
         running ? (
           // Filled in the activity's own colour, like the ✓ it stands in for, rather than the
-          // bare icon a timer card's Stop is: that one sits beside a surfaced Pause to be the
+          // raised surface a timer card's Stop has: that one sits beside a filled Pause to be the
           // quieter of two, where this is the card's only control — and the tint it now sits on
           // is close enough to `raised` that a ghost button had nothing left to read against.
           // Filled is also honest here: the day *is* checked off while the timer runs.
@@ -362,20 +367,22 @@ export function CountCard({
 }
 
 /**
- * A timed activity: start/pause and stop, with a live elapsed reading, and nothing else.
+ * A timed activity: start/pause and stop, over a live readout.
  *
- * **No heat strip.** A contribution graph answers "on which days did this happen", which is the
- * whole story for a check-off and a discarded one for a timer: a square is on or off, so twenty
- * minutes and six hours would look identical. The card stays a compact row and the history goes
- * where magnitude survives — the list in its own sheet, the Today timeline, and the Insights
- * trend. It is also why
- * this card is shorter than a check-off card, which the grid's `items-start` allows for.
+ * **No history grid.** A contribution square is on or off, so twenty minutes and six hours would
+ * look identical; the history goes where magnitude survives — the stretch list in its own sheet,
+ * the Today timeline and the Insights trend. The body is a clock instead, which is also what sets
+ * the card apart at a glance in a list it shares with habit cards. The header carries the goal
+ * line a habit card's does, so the two say the same thing about progress in the same place.
  *
- * The reading is the session and the day — see `TimerReading`. The card says nothing about the
+ * The reading is the session and the day — see `TimerReadout`. The card says nothing about the
  * **block** (the run from Start to Stop that survives every pause); the block is still what the
  * Stop button ends, and so still what tells that button apart from Pause.
  */
 export function DurationCard({
+  thisWeek,
+  streak,
+  total,
   startedAt,
   todayTotal,
   inBlock,
@@ -385,13 +392,17 @@ export function DurationCard({
   onStop,
   ...shared
 }: Shared & {
+  /** The scored amount so far this week, for a weekly goal's progress line. */
+  thisWeek: number
+  streak: number
+  total: number
   /** Present exactly when the activity is running: when the current session began. */
   startedAt?: number
   /** Time logged against this activity today, the running session included. */
   todayTotal: number
   /** Whether a block is open at all — false once stopped, and before the first start. */
   inBlock: boolean
-  /** Tighter padding and a smaller identity dot, so more cards fit without scrolling. */
+  /** Tighter padding, a smaller identity dot and a one-line readout. */
   compact?: boolean
   onStart: () => void
   onPause: () => void
@@ -405,39 +416,52 @@ export function DurationCard({
       {...shared}
       running={running}
       compact={compact}
-      summary={<TimerReading startedAt={startedAt} todayTotal={todayTotal} />}
+      summary={goalSummary(activity, thisWeek, streak, total)}
       action={
-        <>
-          <IconButton
-            label={`${running ? 'Pause' : inBlock ? 'Resume' : 'Start'} ${activity.name}`}
-            variant="quiet"
-            compact={compact}
-            aria-pressed={running}
-            onClick={running ? onPause : onStart}
-          >
-            {running ? <Pause className="size-5" /> : <Play className="size-5" />}
-          </IconButton>
-
-          {/* Stopping is rarer than pausing and it ends something, so it gets a target the
-              same size and a surface it does not have. Present but invisible when there is
-              no block to end: reserving the slot is what stops the name's width — and so
-              whether it truncates — changing under the thumb that just started the timer.
-              Compact drops the reservation: a second 44px slot beside the first leaves no room
-              for the name in a two-up column, and that layout truncates the name regardless, so
-              the width-shift the reservation guards against no longer costs anything. */}
-          {(inBlock || !compact) && (
-            <IconButton
-              label={`Stop ${activity.name}`}
-              compact={compact}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {/* Stopping is rarer than pausing and it ends something, so it is the quieter of the
+              two and sits on the inside, away from the thumb's edge of the card. It is only
+              there while there is a block to end. */}
+          {inBlock && (
+            <button
+              type="button"
               onClick={onStop}
-              disabled={!inBlock}
-              className={inBlock ? '' : 'invisible'}
+              aria-label={`Stop ${activity.name}`}
+              className={`${roundAction(compact)} grid place-items-center bg-raised text-ink hover:bg-raised-hover`}
             >
               <Square className="size-4" />
-            </IconButton>
+            </button>
           )}
-        </>
+
+          {/* The habit toggle's own language: a ring in the activity's colour at rest, filled
+              while it runs, the way ✓ fills once a day is done. */}
+          <button
+            type="button"
+            onClick={running ? onPause : onStart}
+            aria-pressed={running}
+            aria-label={`${running ? 'Pause' : inBlock ? 'Resume' : 'Start'} ${activity.name}`}
+            className={`${roundAction(compact)} grid place-items-center`}
+            style={{
+              backgroundColor: running ? activity.color : 'transparent',
+              boxShadow: running ? 'none' : `inset 0 0 0 2px ${activity.color}`,
+              color: running ? 'var(--color-slate-950)' : activity.color,
+            }}
+          >
+            {running ? (
+              <Pause className="size-4 fill-current" />
+            ) : (
+              <Play className="size-4 translate-x-px fill-current" />
+            )}
+          </button>
+        </div>
       }
-    />
+    >
+      <TimerReadout
+        startedAt={startedAt}
+        todayTotal={todayTotal}
+        inBlock={inBlock}
+        compact={compact}
+      />
+    </CardShell>
   )
 }
