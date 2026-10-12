@@ -24,7 +24,6 @@ import { CountCard, DurationCard } from '../components/ActivityCard.tsx'
 import ActivitySheet, { SHEET_ENTRIES } from '../components/ActivitySheet.tsx'
 import Button from '../components/ui/Button.tsx'
 import EmptyState from '../components/ui/EmptyState.tsx'
-import Meter from '../components/ui/Meter.tsx'
 import { Modal } from '../components/ui/Modal.tsx'
 import Toast from '../components/ui/Toast.tsx'
 import {
@@ -52,7 +51,7 @@ import {
   type Period,
 } from '../data/types.ts'
 import { streaks, targetAt } from '../lib/accounting/goals.ts'
-import { periodTotals, totalSince, type PeriodTotals } from '../lib/accounting/totals.ts'
+import { periodTotals, totalSince } from '../lib/accounting/totals.ts'
 import { completionAmounts, dayAmounts, periodAmounts, trackedByDay } from '../lib/days.ts'
 import { formatDuration } from '../lib/format.ts'
 import { nextColor } from '../lib/palette.ts'
@@ -145,11 +144,6 @@ export default function Activities() {
 
   const visible = showArchived ? activities : activities.filter((activity) => !activity.archived)
   const archivedCount = activities.filter((activity) => activity.archived).length
-  // Whether the day has any coverage to summarise, asked of the records rather than of any flag:
-  // every activity may hold intervals, whatever card it shows. Archived ones count — an activity
-  // archived at noon still tracked the morning.
-  const anyTimed = entries.length > 0
-
   const startedAtByActivity = new Map(
     openEntries.map((entry) => [entry.activityId, entry.startedAt]),
   )
@@ -430,14 +424,6 @@ export default function Activities() {
           </Button>
         </div>
       </header>
-
-      {/* Coverage of the day, and so only meaningful when something is timed: a check-off
-          contributes no time, and cannot be in either the numerator or the denominator.
-          ponytail: no count half to this panel — "4 of 6 done today" is legible from the grid
-          below, where a completed card wears a filled tick. */}
-      {anyTimed && (
-        <DaySummary day={dayTotals} running={openEntries.length} compact={compact} />
-      )}
 
       {activities.length === 0 && (
         <EmptyState
@@ -842,57 +828,6 @@ function SortableCard({
           {children}
         </div>
       </div>
-    </div>
-  )
-}
-
-/**
- * The day so far: how much of it is accounted for at all.
- *
- * Tracked is the *union* of every interval, so four timers running at once still cannot push it
- * past the hours elapsed — which is what makes untracked mean anything. The denominator is the
- * day clamped to now, so a fully-tracked morning reads zero untracked at 09:00 rather than owing
- * the rest of the day.
- *
- * This is deliberately a different question from the number on a card. A card counts its block;
- * this counts the day. They are not meant to agree, so they say which they are.
- *
- * Compact strips it to the coverage bar alone — no panel, no label, no readings. The bar still
- * carries the one thing worth a glance (how much of the day is accounted for), and the words it
- * loses are the density compact is spending here.
- */
-function DaySummary({
-  day,
-  running,
-  compact,
-}: {
-  day: PeriodTotals
-  running: number
-  compact: boolean
-}) {
-  const covered = day.length > 0 ? day.tracked / day.length : 0
-
-  if (compact) return <Meter fraction={covered} className="!mt-3" />
-
-  return (
-    // Stacked on a phone; a horizontal strip from `md` up, where the coverage bar takes the
-    // surplus width rather than the panel being stretched around a short one.
-    <div className="panel mt-3 p-4 md:flex md:items-center md:gap-6">
-      <div className="md:shrink-0">
-        <p className="text-2xs font-semibold tracking-widest text-ink-muted uppercase">
-          Tracked today
-        </p>
-        <p className="mt-1 text-3xl font-semibold tracking-tight text-ink tabular-nums">
-          {formatDuration(day.tracked)}
-        </p>
-      </div>
-      {/* `!` overrides the `mt-2` baked into Meter: it wants a top gap when stacked and none
-          when it sits in the row. */}
-      <Meter fraction={covered} className="!mt-2 md:!mt-0 md:flex-1" />
-      <p className="mt-2 text-xs text-ink-muted md:mt-0 md:shrink-0 md:whitespace-nowrap">
-        {formatDuration(day.untracked)} untracked of {formatDuration(day.length)} so far
-        {running > 0 && ` · ${running} running`}
-      </p>
     </div>
   )
 }
