@@ -1,3 +1,4 @@
+import { useMemo, useSyncExternalStore } from 'react'
 import type { Scale } from './types.ts'
 
 /**
@@ -87,7 +88,10 @@ const DEFAULTS: Prefs = {
 const storageKey = (key: keyof Prefs) => `activity-tracker.${key}`
 
 export function getPref<K extends keyof Prefs>(key: K): Prefs[K] {
-  const stored = localStorage.getItem(storageKey(key))
+  return parse(key, localStorage.getItem(storageKey(key)))
+}
+
+function parse<K extends keyof Prefs>(key: K, stored: string | null): Prefs[K] {
   if (stored === null) return DEFAULTS[key]
   try {
     return JSON.parse(stored) as Prefs[K]
@@ -99,6 +103,28 @@ export function getPref<K extends keyof Prefs>(key: K): Prefs[K] {
 
 export function setPref<K extends keyof Prefs>(key: K, value: Prefs[K]): void {
   localStorage.setItem(storageKey(key), JSON.stringify(value))
+  for (const listener of listeners) listener()
+}
+
+/** Everything `usePref` has subscribed. A plain set rather than a DOM event, so tests need no `window`. */
+const listeners = new Set<() => void>()
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
+
+/**
+ * A pref that re-renders its component whenever `setPref` writes it, from anywhere.
+ *
+ * For a pref something other than the reading screen writes, such as `lastSyncAt`, which
+ * `SyncAgent` moves in the background. The snapshot is the stored string rather than the parsed
+ * value, so an object pref keeps one identity between writes instead of looping
+ * `useSyncExternalStore`.
+ */
+export function usePref<K extends keyof Prefs>(key: K): Prefs[K] {
+  const stored = useSyncExternalStore(subscribe, () => localStorage.getItem(storageKey(key)))
+  return useMemo(() => parse(key, stored), [key, stored])
 }
 
 /** The prefs that map activity ids to a timestamp. */
