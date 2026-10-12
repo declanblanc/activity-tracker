@@ -22,6 +22,7 @@ import ActivityForm from '../components/ActivityForm.tsx'
 import { blankDraft, draftFrom, toInput, type Draft } from '../components/activityDraft.ts'
 import { CountCard, DurationCard } from '../components/ActivityCard.tsx'
 import ActivitySheet, { SHEET_ENTRIES } from '../components/ActivitySheet.tsx'
+import SyncStatus from '../components/SyncStatus.tsx'
 import Button from '../components/ui/Button.tsx'
 import EmptyState from '../components/ui/EmptyState.tsx'
 import { Modal } from '../components/ui/Modal.tsx'
@@ -384,7 +385,11 @@ export default function Activities() {
           from `sm` up each label appears. The label is `sr-only` rather than removed, so an
           icon-only button still carries its name. `flex-wrap` stays as a backstop. */}
       <header className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-semibold text-ink">Activities</h1>
+        {/* Stacked rather than beside the title, so the phone toolbar keeps its one row. */}
+        <div>
+          <h1 className="text-xl font-semibold text-ink">Activities</h1>
+          <SyncStatus />
+        </div>
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {/* Only worth offering once there is a card whose room it could reclaim: it now
               tightens every card's own padding, not just the check-off strip. */}
