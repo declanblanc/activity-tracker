@@ -80,31 +80,38 @@ export default function App() {
       {/* `min-w-0` so a wide child (the trend chart) cannot push the flex row past the viewport
           instead of shrinking. `clear-nav` leaves room for the bottom bar and the home indicator
           beneath it, and collapses at `md` where neither exists. */}
-      {/* `relative` anchors the pull-to-refresh indicator to the top of the scroll area;
-          `overscroll-y-contain` stops the browser's own pull-to-refresh from firing on top of it. */}
-      <main ref={mainRef} className="clear-nav relative min-w-0 flex-1 overflow-y-auto overscroll-y-contain">
-        <PullToRefresh scrollRef={mainRef} onRefresh={refresh}>
-          {/* No fallback content: the chunk is served from the same cache as the shell, so the
-              wait is a frame or two, and a spinner that flashes is worse than nothing. */}
-          <Suspense fallback={null}>
-            <Routes>
-              {SCREENS.map(({ path, element }) => (
-                <Route key={path} path={path} element={element} />
-              ))}
-              {/* Reached from Settings, not the tab bar: recovering a deleted activity is a rare
-                  errand and does not earn a fifth tab. */}
-              <Route path="/deleted" element={<DeletedActivities />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </PullToRefresh>
-      </main>
+      {/* The column puts the offline banner above the scroll rather than inside it, so Today's
+          timeline still gets exactly the height left over; `min-h-0` lets `<main>` shrink to it. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Runs sync on whichever screen the app opens on, and draws the offline banner. */}
+        <SyncAgent />
+        {/* `relative` anchors the pull-to-refresh indicator to the top of the scroll area;
+            `overscroll-y-contain` stops the browser's own pull-to-refresh from firing on top of it. */}
+        <main
+          ref={mainRef}
+          className="clear-nav relative min-h-0 flex-1 overflow-y-auto overscroll-y-contain"
+        >
+          <PullToRefresh scrollRef={mainRef} onRefresh={refresh}>
+            {/* No fallback content: the chunk is served from the same cache as the shell, so the
+                wait is a frame or two, and a spinner that flashes is worse than nothing. */}
+            <Suspense fallback={null}>
+              <Routes>
+                {SCREENS.map(({ path, element }) => (
+                  <Route key={path} path={path} element={element} />
+                ))}
+                {/* Reached from Settings, not the tab bar: recovering a deleted activity is a rare
+                    errand and does not earn a fifth tab. */}
+                <Route path="/deleted" element={<DeletedActivities />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </PullToRefresh>
+        </main>
+      </div>
       <BottomBar />
       {/* Mounted here, not on a screen: a forgotten timer is worth raising whichever screen the
           app happens to open on. */}
       <ForgottenPrompt />
-      {/* Renders nothing. Mounted here so sync runs on whichever screen the app opens on. */}
-      <SyncAgent />
     </div>
   )
 }
